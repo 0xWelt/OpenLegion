@@ -1,0 +1,6 @@
+id: call-dunder-exit
+valid:
+  - 'with cm: pass'
+invalid:
+  - 'cm.__exit__(None, None, None)'
+  - 'cm.__aexit__(None, None, None)'

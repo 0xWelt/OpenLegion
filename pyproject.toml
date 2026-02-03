@@ -1,0 +1,243 @@
+[project]
+name = "OpenLegion"
+description = "Yet another OpenClaw written in Python"
+readme = "README.md"
+requires-python = ">= 3.13,<3.14"
+authors = [
+    { name = "0xWelt", email = "dinghao12601@gmail.com" },
+]
+license = { text = "Apache License, Version 2.0 (Apache-2.0)" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Operating System :: POSIX :: Linux",
+]
+dynamic = ["version"]
+
+dependencies = [
+    "rich",
+    "tqdm",
+    "pydantic",
+    "loguru",
+]
+
+[dependency-groups]
+# Development dependencies - only needed for local development and CI
+# These are NOT installed in production deployments
+dev = [
+    # ===== Testing Framework =====
+    "pytest",              # Main testing framework
+    "pytest-asyncio",      # Support for async/await tests
+    "pytest-cov",          # Coverage reporting for pytest
+    "pytest-timeout",      # Timeout support for tests (prevent hanging)
+    "pytest-xdist",        # Parallel test execution
+    "coverage",            # Code coverage measurement
+    "httpx>=0.28.1",       # HTTP client for testing FastAPI endpoints
+
+    # ===== Code Quality & Linting =====
+    "pre-commit",          # Git hooks for code quality checks
+    "ast-grep-cli",        # Structural code search and refactoring tool
+    "ty",                  # Static type checker
+]
+
+[project.urls]
+Homepage = "https://github.com/0xWelt/OpenLegion"
+Repository = "https://github.com/0xWelt/OpenLegion"
+
+# ========== build system ==========
+[build-system]
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["legion"]
+
+[tool.hatch.version]
+source = "regex"
+path = "legion/__init__.py"
+pattern = "^__version__ = [\"'](?P<version>[^\"']+)[\"']"
+
+# ========== pytest ==========
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+asyncio_default_fixture_loop_scope = "function"
+# Print slowest 5 tests
+addopts = ['--durations=5', '-rsfE', '--color=yes', '--strict-markers']
+timeout = 300
+session_timeout = 480
+markers = [
+    "skip_on_ci: marks tests that should skip on CI",
+]
+
+
+# ========== linter tools ==========
+[tool.codespell]
+ignore-words = "docs/codespell.txt"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+output-format = "full"
+src = ["legion"]
+
+[tool.ruff.format]
+quote-style = "single"
+docstring-code-format = false
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+# Sort according to https://docs.astral.sh/ruff/rules
+select = [
+    "FAST",    # FastAPI
+    "YTT",     # flake8-2020
+    "ANN",     # flake8-annotations
+    "ASYNC",   # flake8-async
+    "S",       # flake8-bandit
+    "BLE",     # flake8-blind-except
+    "B",       # flake8-bugbear
+    "COM",     # flake8-commas
+    "C4",      # flake8-comprehensions
+    "DTZ",     # flake8-datetimez
+    "T10",     # flake8-debugger
+    "EM",      # flake8-errmsg
+    "EXE",     # flake8-executable
+    "FA",      # flake8-future-annotations
+    "ISC",     # flake8-implicit-str-concat
+    "LOG",     # flake8-logging
+    "INP",     # flake8-no-pep420
+    "PIE",     # flake8-pie
+    "T20",     # flake8-print
+    "PYI",     # flake8-pyi
+    "PT",      # flake8-pytest-style
+    "Q",       # flake8-quotes
+    "RSE",     # flake8-raise
+    "SIM",     # flake8-simplify
+    "TID",     # flake8-tidy-imports
+    "TC",      # flake8-type-checking
+    "ARG",     # flake8-unused-arguments
+    "I",       # isort
+    "C90",     # mccabe complexity
+    "NPY",     # NumPy-specific rules
+    "PD",      # pandas-vet
+    "N",       # pep8-naming
+    "PERF",    # perflint
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "PGH",     # pygrep-hooks
+    "PL",      # Pylint
+    "UP",      # pyupgrade
+    "FURB",    # refurb
+    "RUF",     # ruff
+    "TRY",     # tryceratops
+]
+preview = true
+explicit-preview-rules = true
+ignore = [
+    "ANN002",  # missing-type-args
+    "ANN003",  # missing-type-kwargs
+    "ANN204",  # missing-return-type-special-method
+    "ANN401",  # any-type
+    "B027",    # empty-method-without-abstract-decorator
+    "B905",    # zip-without-explicit-strict
+    "C401",    # unnecessary set comprehension
+    "C416",    # unnecessary-comprehension
+    "COM812",  # missing-trailing-comma
+    "E501",    # line-too-long
+    "N802",    # invalid-function-name
+    "PT012",   # pytest-raises-with-multiple-statements
+    "PT028",   # pytest-parameter-with-default-argument
+    "RUF005",  # collection-literal-concatenation
+    "RUF052",  # used-dummy-variable
+    "S101",    # assert
+    "S105",    # hardcoded-password-string
+    "S106",    # hardcoded-password-func-arg
+    "S107",    # hardcoded-password-default
+    "S108",    # hardcoded-temp-file
+    "S301",    # suspicious-pickle-usage
+    "S311",    # suspicious-non-cryptographic-random-usage
+    "S324",    # hashlib-insecure-hash-function
+    "SIM105",  # suppressible-exception
+    "SIM108",  # if-else-block-instead-of-if-exp
+    "TID252",  # relative-imports
+    "TRY003",  # raise-vanilla-args
+    "TRY301",  # raise-within-try
+    "TRY400",  # error-instead-of-exception
+    "UP047",   # type parameters
+    "W505",    # doc-line-too-long
+]
+allowed-confusables = ["，", "。", "：", "？", "！", "、", "（", "）", "；", "“", "”"]
+extend-safe-fixes = [
+    "C408",     # unnecessary-collection-call
+    "E711",     # none-comparison
+    "FURB129",  # readlines-in-for
+    "PERF102",  # incorrect-dict-iterator
+    "PIE810",   # multiple-starts-ends-with
+    "SIM102",   # collapsible-if
+    "TC001",    # typing-only-first-party-import
+    "TC002",    # typing-only-third-party-import
+    "TC003",    # typing-only-standard-library-import
+    "TC004",    # runtime-import-in-type-checking-block
+    "TRY201",   # verbose-raise
+    "UP004",    # useless-object-inheritance
+    "UP008",    # super-call-with-parameters
+    "UP038",    # non-pep604-isinstance
+    "UP039",    # unnecessary-class-parentheses
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 17
+
+[tool.ruff.lint.pylint]
+max-args = 15
+max-positional-args = 7
+max-statements = 60
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+    "F401",     # unused-import
+]
+"test/**/*.py" = [
+    "ANN",      # flake8-annotations
+    "S108",     # hardcoded-temp-file
+    "PLR0915",
+    "T20",     # flake8-print
+]
+"*.ipynb" = [
+    "T20",     # flake8-print
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["legion"]
+known-local-folder = ["legion", "test"]
+lines-after-imports = 2
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+suppress-dummy-args = true
+suppress-none-returning = true
+
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+runtime-evaluated-decorators = ["pydantic.validate_call"]
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+multiline-quotes = "double"
+inline-quotes = "single"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# ========== ty ==========
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"
+invalid-method-override = "warn"
+possibly-missing-import = "warn"

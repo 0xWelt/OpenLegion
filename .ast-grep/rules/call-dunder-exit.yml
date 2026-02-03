@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: call-dunder-exit
+message: >-
+  Do not call __exit__ or __aexit__ directly, this may leak some exceptions unexpectedly.
+  Try to use `with` statement, or use `contextlib.ExitStack` to combine multiple context managers.
+  Add "# ast-grep-ignore" to ignore this error if you know what you are doing.
+severity: error
+language: Python
+rule:
+  any:
+    - pattern: $X.__exit__(None, None, None)
+    - pattern: $X.__exit__(None, None, None,)
+    - pattern: $X.__aexit__(None, None, None)
+    - pattern: $X.__aexit__(None, None, None,)

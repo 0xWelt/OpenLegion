@@ -1,0 +1,57 @@
+default_stages: [pre-commit, pre-push, manual]
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-symlinks
+      - id: destroyed-symlinks
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: ^\.gitlab-ci\.yml$
+      - id: check-toml
+      - id: check-ast
+      - id: check-added-large-files
+        exclude: ^uv\.lock$
+      - id: check-merge-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: debug-statements
+      - id: double-quote-string-fixer
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.14
+    hooks:
+      - id: ruff-check
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        additional_dependencies: [".[toml]"]
+        exclude: |
+          (?x)^(
+            .*\.(txt|json|jsonl|ipynb)$
+          ).*$
+
+  # Custom hooks for zip strict fixing
+  - repo: https://dev.msh.team/dinghao/pre-commit-hooks.git
+    rev: v0.4.0
+    hooks:
+      - id: zip-strict-fixer
+
+  - repo: https://github.com/boidolr/ast-grep-pre-commit
+    rev: 0.40.5
+    hooks:
+      - id: ast-grep
+        args: ["--config", ".ast-grep-config.yml"]
+
+  # TODO(@dinghao): ty does not have an official pre-commit hook, so we use a local hook to run it.
+  - repo: local
+    hooks:
+      - id: ty-check
+        name: ty-check
+        language: system
+        pass_filenames: false
+        entry: bash -c 'PYTHON_ARG=$([ -d .venv ] && echo "--python=.venv/"); if [[ -n "$VIRTUAL_ENV" || -n "$UV_SYSTEM_PYTHON" ]]; then ty check $PYTHON_ARG --output-format concise --exclude hatch_build.py; else uv run ty check $PYTHON_ARG --output-format concise --exclude hatch_build.py; fi'
