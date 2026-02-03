@@ -6,29 +6,29 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-[English](README.md) | [中文](docs/README.ZH.md) | [日本語](docs/README.JP.md) | [한국어](docs/README.KR.md)
+[English](../README.md) | [中文](README.ZH.md) | [日本語](README.JP.md) | [한국어](README.KR.md)
 
-Yet another OpenClaw written in Python.
+Python で書かれた、また別の OpenClaw。
 
-## Acknowledgement
+## 謝辞
 
-- **Development Tools**: This project is almost entirely developed using [kimi-cli](https://github.com/MoonshotAI/kimi-cli) with the [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) model.
-- **Inspiration**: This project is inspired by [OpenClaw](https://github.com/openclaw/openclaw).
+- **開発ツール**：このプロジェクトはほぼ完全に [kimi-cli](https://github.com/MoonshotAI/kimi-cli) と [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) モデルを使用して開発されました。
+- **インスピレーション**：このプロジェクトは [OpenClaw](https://github.com/openclaw/openclaw) に触発されています。
 
-## Repo Analytics
+## リポジトリ分析
 
 ![Repobeats analytics image](https://repobeats.axiom.co/api/embed/a13b7fa00770af08b76903a21729c18e8c01387f.svg)
 
-## Contributors
+## 貢献者
 
 <a href="https://github.com/0xWelt/OpenLegion/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=0xWelt/OpenLegion" alt="Contributors" />
 </a>
 
-## Star History
+## Star 履歴
 
 [![Star History Chart](https://api.star-history.com/svg?repos=0xWelt/OpenLegion&type=Date)](https://star-history.com/#0xWelt/OpenLegion&Date)
 
-## License
+## ライセンス
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+このプロジェクトは Apache License 2.0 の下でライセンスされています - 詳細は [LICENSE](../LICENSE) ファイルを参照してください。

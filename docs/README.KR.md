@@ -6,29 +6,29 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-[English](README.md) | [中文](docs/README.ZH.md) | [日本語](docs/README.JP.md) | [한국어](docs/README.KR.md)
+[English](../README.md) | [中文](README.ZH.md) | [日本語](README.JP.md) | [한국어](README.KR.md)
 
-Yet another OpenClaw written in Python.
+Python으로 작성된 또 다른 OpenClaw.
 
-## Acknowledgement
+## 감사의 글
 
-- **Development Tools**: This project is almost entirely developed using [kimi-cli](https://github.com/MoonshotAI/kimi-cli) with the [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) model.
-- **Inspiration**: This project is inspired by [OpenClaw](https://github.com/openclaw/openclaw).
+- **개발 도구**: 이 프로젝트는 거의 완전히 [kimi-cli](https://github.com/MoonshotAI/kimi-cli)와 [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) 모델을 사용하여 개발되었습니다.
+- **영감**: 이 프로젝트는 [OpenClaw](https://github.com/openclaw/openclaw)에서 영감을 받았습니다.
 
-## Repo Analytics
+## 저장소 분석
 
 ![Repobeats analytics image](https://repobeats.axiom.co/api/embed/a13b7fa00770af08b76903a21729c18e8c01387f.svg)
 
-## Contributors
+## 기여자
 
 <a href="https://github.com/0xWelt/OpenLegion/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=0xWelt/OpenLegion" alt="Contributors" />
 </a>
 
-## Star History
+## Star 히스토리
 
 [![Star History Chart](https://api.star-history.com/svg?repos=0xWelt/OpenLegion&type=Date)](https://star-history.com/#0xWelt/OpenLegion&Date)
 
-## License
+## 라이선스
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+이 프로젝트는 Apache License 2.0에 따라 라이선스가 부여됩니다 - 자세한 내용은 [LICENSE](../LICENSE) 파일을 참조하세요.

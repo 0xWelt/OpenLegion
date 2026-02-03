@@ -6,29 +6,29 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-[English](README.md) | [中文](docs/README.ZH.md) | [日本語](docs/README.JP.md) | [한국어](docs/README.KR.md)
+[English](../README.md) | [中文](README.ZH.md) | [日本語](README.JP.md) | [한국어](README.KR.md)
 
-Yet another OpenClaw written in Python.
+又一个用 Python 编写的 OpenClaw。
 
-## Acknowledgement
+## 致谢
 
-- **Development Tools**: This project is almost entirely developed using [kimi-cli](https://github.com/MoonshotAI/kimi-cli) with the [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) model.
-- **Inspiration**: This project is inspired by [OpenClaw](https://github.com/openclaw/openclaw).
+- **开发工具**：本项目几乎完全使用 [kimi-cli](https://github.com/MoonshotAI/kimi-cli) 配合 [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) 模型开发完成。
+- **灵感来源**：本项目受到 [OpenClaw](https://github.com/openclaw/openclaw) 的启发。
 
-## Repo Analytics
+## 仓库分析
 
 ![Repobeats analytics image](https://repobeats.axiom.co/api/embed/a13b7fa00770af08b76903a21729c18e8c01387f.svg)
 
-## Contributors
+## 贡献者
 
 <a href="https://github.com/0xWelt/OpenLegion/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=0xWelt/OpenLegion" alt="Contributors" />
 </a>
 
-## Star History
+## Star 历史
 
 [![Star History Chart](https://api.star-history.com/svg?repos=0xWelt/OpenLegion&type=Date)](https://star-history.com/#0xWelt/OpenLegion&Date)
 
-## License
+## 许可证
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+本项目采用 Apache License 2.0 许可证 - 详情请参阅 [LICENSE](../LICENSE) 文件。
