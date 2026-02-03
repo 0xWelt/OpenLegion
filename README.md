@@ -15,6 +15,20 @@ Yet another OpenClaw written in Python.
 - **Development Tools**: This project is almost entirely developed using [kimi-cli](https://github.com/MoonshotAI/kimi-cli) with the [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) model.
 - **Inspiration**: This project is inspired by [OpenClaw](https://github.com/openclaw/openclaw).
 
+## Develop
+
+To develop locally with hot-reload for both frontend and backend:
+
+```bash
+# Terminal 1: Start backend API server
+make web-back
+
+# Terminal 2: Start frontend dev server
+make web-front
+```
+
+Then open `http://localhost:5173` to access the web UI with hot-reload enabled.
+
 ## Repo Analytics
 
 ![Repobeats analytics image](https://repobeats.axiom.co/api/embed/a13b7fa00770af08b76903a21729c18e8c01387f.svg)

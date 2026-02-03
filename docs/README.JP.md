@@ -15,6 +15,20 @@ Python で書かれた、また別の OpenClaw。
 - **開発ツール**：このプロジェクトはほぼ完全に [kimi-cli](https://github.com/MoonshotAI/kimi-cli) と [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) モデルを使用して開発されました。
 - **インスピレーション**：このプロジェクトは [OpenClaw](https://github.com/openclaw/openclaw) に触発されています。
 
+## 開発
+
+ローカル開発時に、ホットリロードを有効にして前后端を同时に起動：
+
+```bash
+# ターミナル 1：バックエンド API サーバーを起動
+make web-back
+
+# ターミナル 2：フロントエンド開発サーバーを起動
+make web-front
+```
+
+その後、`http://localhost:5173` を開いてホットリロード対応の Web UI にアクセス。
+
 ## リポジトリ分析
 
 ![Repobeats analytics image](https://repobeats.axiom.co/api/embed/a13b7fa00770af08b76903a21729c18e8c01387f.svg)

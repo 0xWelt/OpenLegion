@@ -1,6 +1,37 @@
 ##### Project Specific #####
 uv.lock
 
+##### Node.js / Web.gitignore #####
+# Dependencies
+web/node_modules/
+web/.pnp
+web/.pnp.js
+
+# Production build (source)
+web/dist/
+web/build/
+
+# Misc
+web/.DS_Store
+web/.env.local
+web/.env.development.local
+web/.env.test.local
+web/.env.production.local
+web/npm-debug.log*
+web/yarn-debug.log*
+web/yarn-error.log*
+web/pnpm-debug.log*
+
+# TypeScript
+web/*.tsbuildinfo
+
+# Vite
+web/.vite/
+
+# Built web UI in Python package (auto-generated)
+legion/web/static/*
+!legion/web/static/.gitkeep
+
 ##### Python.gitignore #####
 # Byte-compiled / optimized / DLL files
 __pycache__/

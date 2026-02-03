@@ -15,6 +15,20 @@
 - **开发工具**：本项目几乎完全使用 [kimi-cli](https://github.com/MoonshotAI/kimi-cli) 配合 [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) 模型开发完成。
 - **灵感来源**：本项目受到 [OpenClaw](https://github.com/openclaw/openclaw) 的启发。
 
+## 开发
+
+在本地开发时，使用热重载模式同时启动前后端：
+
+```bash
+# 终端 1：启动后端 API 服务
+make web-back
+
+# 终端 2：启动前端开发服务器
+make web-front
+```
+
+然后打开 `http://localhost:5173` 访问支持热重载的 Web UI。
+
 ## 仓库分析
 
 ![Repobeats analytics image](https://repobeats.axiom.co/api/embed/a13b7fa00770af08b76903a21729c18e8c01387f.svg)

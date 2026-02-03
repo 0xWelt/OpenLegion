@@ -21,7 +21,14 @@ dependencies = [
     "tqdm",
     "pydantic",
     "loguru",
-]
+    "typer",
+    "fastapi",
+    "uvicorn",
+    "psutil",
+] 
+
+[project.scripts]
+legion = "legion.cli:main"
 
 [dependency-groups]
 # Development dependencies - only needed for local development and CI
