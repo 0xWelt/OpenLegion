@@ -15,6 +15,24 @@ Python で書かれた、また別の OpenClaw。
 - **開発ツール**：このプロジェクトはほぼ完全に [kimi-cli](https://github.com/MoonshotAI/kimi-cli) と [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) モデルを使用して開発されました。
 - **インスピレーション**：このプロジェクトは [OpenClaw](https://github.com/openclaw/openclaw) に触発されています。
 
+## インストール
+
+[uv](https://github.com/astral-sh/uv) を使用して Legion をインストール：
+
+```bash
+uv tool install git+https://github.com/0xWelt/OpenLegion
+```
+
+## クイックスタート
+
+Legion サービスを起動して Web UI を開く：
+
+```bash
+legion web
+```
+
+このコマンドはサービスを自動的に起動し（実行中でない場合）、ブラウザを開きます。
+
 ## 開発
 
 ローカル開発時に、ホットリロードを有効にして前后端を同时に起動：
@@ -27,7 +45,7 @@ make web-back
 make web-front
 ```
 
-その後、`http://localhost:5173` を開いてホットリロード対応の Web UI にアクセス。
+フロントエンド開発サーバーがローカル URL（通常は `http://localhost:5173`）を出力します — ブラウザで開いてください。
 
 ## リポジトリ分析
 

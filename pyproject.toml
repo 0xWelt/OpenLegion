@@ -23,7 +23,8 @@ dependencies = [
     "loguru",
     "typer",
     "fastapi",
-    "uvicorn",
+    "uvicorn[standard]",
+    "websockets",
     "psutil",
 ] 
 

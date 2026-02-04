@@ -15,6 +15,24 @@
 - **开发工具**：本项目几乎完全使用 [kimi-cli](https://github.com/MoonshotAI/kimi-cli) 配合 [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) 模型开发完成。
 - **灵感来源**：本项目受到 [OpenClaw](https://github.com/openclaw/openclaw) 的启发。
 
+## 安装
+
+使用 [uv](https://github.com/astral-sh/uv) 安装 Legion：
+
+```bash
+uv tool install git+https://github.com/0xWelt/OpenLegion
+```
+
+## 快速开始
+
+启动 Legion 服务并打开 Web UI：
+
+```bash
+legion web
+```
+
+此命令会自动启动服务（如未运行）并打开浏览器。
+
 ## 开发
 
 在本地开发时，使用热重载模式同时启动前后端：
@@ -27,7 +45,7 @@ make web-back
 make web-front
 ```
 
-然后打开 `http://localhost:5173` 访问支持热重载的 Web UI。
+前端开发服务器会输出本地地址（通常是 `http://localhost:5173`）——在浏览器中打开即可。
 
 ## 仓库分析
 

@@ -15,6 +15,24 @@ Python으로 작성된 또 다른 OpenClaw.
 - **개발 도구**: 이 프로젝트는 거의 완전히 [kimi-cli](https://github.com/MoonshotAI/kimi-cli)와 [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) 모델을 사용하여 개발되었습니다.
 - **영감**: 이 프로젝트는 [OpenClaw](https://github.com/openclaw/openclaw)에서 영감을 받았습니다.
 
+## 설치
+
+[uv](https://github.com/astral-sh/uv)를 사용하여 Legion 설치：
+
+```bash
+uv tool install git+https://github.com/0xWelt/OpenLegion
+```
+
+## 퀵 스타트
+
+Legion 서비스를 시작하고 Web UI 열기：
+
+```bash
+legion web
+```
+
+이 명령은 서비스를 자동으로 시작하고(실행 중이 아닌 경우) 브라우저를 엽니다。
+
 ## 개발
 
 로컬 개발 시 핫 리로드와 함께 프론트엔드와 백엔드를 동시에 시작：
@@ -27,7 +45,7 @@ make web-back
 make web-front
 ```
 
-그런 다음 `http://localhost:5173`를 열어 핫 리로드가 활성화된 Web UI에 접근。
+프론트엔드 개발 서버가 로컬 URL(일반적으로 `http://localhost:5173`)을 출력합니다 — 브라우저에서 열어주세요.
 
 ## 저장소 분석
 

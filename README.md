@@ -15,6 +15,24 @@ Yet another OpenClaw written in Python.
 - **Development Tools**: This project is almost entirely developed using [kimi-cli](https://github.com/MoonshotAI/kimi-cli) with the [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) model.
 - **Inspiration**: This project is inspired by [OpenClaw](https://github.com/openclaw/openclaw).
 
+## Install
+
+Install Legion using [uv](https://github.com/astral-sh/uv):
+
+```bash
+uv tool install git+https://github.com/0xWelt/OpenLegion
+```
+
+## Quick Start
+
+Start the Legion service and open the web UI:
+
+```bash
+legion web
+```
+
+This will start the service (if not running) and open your browser automatically.
+
 ## Develop
 
 To develop locally with hot-reload for both frontend and backend:
@@ -27,7 +45,7 @@ make web-back
 make web-front
 ```
 
-Then open `http://localhost:5173` to access the web UI with hot-reload enabled.
+The frontend dev server will print the local URL (usually `http://localhost:5173`) — open it in your browser.
 
 ## Repo Analytics
 
