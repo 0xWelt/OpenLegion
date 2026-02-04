@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { useEffect } from 'react'
-import { useThemeStore } from './stores/theme'
+import { useTheme } from './hooks/use-theme'
 import Layout from './components/Layout'
 import Overview from './pages/Overview'
 import Chat from './pages/Chat'
@@ -11,17 +11,15 @@ import Skills from './pages/Skills'
 import Nodes from './pages/Nodes'
 import Config from './pages/Config'
 import Logs from './pages/Logs'
+import CronJobs from './pages/CronJobs'
 
 function App() {
-  const { theme } = useThemeStore()
+  const { theme } = useTheme()
 
+  // Sync theme on mount (already handled by useTheme, but ensure consistency)
   useEffect(() => {
     const root = document.documentElement
-    if (theme === 'dark') {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
+    root.classList.toggle('dark', theme === 'dark')
   }, [theme])
 
   return (
@@ -37,6 +35,7 @@ function App() {
           <Route path="nodes" element={<Nodes />} />
           <Route path="config" element={<Config />} />
           <Route path="logs" element={<Logs />} />
+          <Route path="cron" element={<CronJobs />} />
         </Route>
       </Routes>
     </Router>

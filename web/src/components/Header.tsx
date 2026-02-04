@@ -1,5 +1,4 @@
-import { Menu, Sun, Moon, Bell, CheckCircle2 } from 'lucide-react'
-import { useThemeStore } from '../stores/theme'
+import { Menu, Bell } from 'lucide-react'
 
 interface HeaderProps {
   sidebarOpen: boolean
@@ -7,15 +6,13 @@ interface HeaderProps {
 }
 
 export default function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
-  const { resolvedTheme, toggleTheme } = useThemeStore()
-
   return (
     <header className="h-14 bg-oc-surface border-b border-oc-border flex items-center justify-between px-4">
       {/* Left side */}
       <div className="flex items-center gap-4">
         <button
           onClick={onToggleSidebar}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover lg:hidden"
           title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <Menu size={18} />
@@ -35,18 +32,9 @@ export default function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
         </div>
 
         {/* Notifications */}
-        <button className="relative w-8 h-8 flex items-center justify-center rounded-lg text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover transition-colors">
+        <button className="relative w-8 h-8 flex items-center justify-center rounded-lg text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover">
           <Bell size={18} />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
-        </button>
-
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleTheme}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover transition-colors"
-          title={resolvedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
-          {resolvedTheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
         </button>
       </div>
     </header>

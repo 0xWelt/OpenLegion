@@ -8,8 +8,10 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-oc-bg text-oc-text overflow-hidden">
-      {/* Sidebar */}
-      <Sidebar open={sidebarOpen} />
+      {/* Sidebar - fixed width container */}
+      <div className={sidebarOpen ? 'w-56' : 'w-14'}>
+        <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+      </div>
       
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">

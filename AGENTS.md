@@ -6,7 +6,9 @@
 
 ## Git
 
-- Use `gh` command for github, `glab` command for gitlab. Do not use bare `curl` or `wget` to interact with git repositories.
+- Use the standard cli tools:
+  - Do not use bare `curl`, `wget` or `FetchURL` to interact with git repositories. Use `gh` command for github, `glab` command for gitlab.
+  - Do not clone repositories to the local machine. Read files with `gh` or `glab` directly from the remote repository.
 - Do not create commits or push changes unless explicitly authorized by the user. Only modify files as requested; leave git operations to the user unless they explicitly ask for them.
 - When making commits, use conventional commit messages.
 - When running git rebase commands (e.g., `git rebase --continue`), always use `-c core.editor=true` to avoid opening an interactive editor. For example: `git -c core.editor=true rebase --continue`. This prevents IDE from opening during automated rebase operations.

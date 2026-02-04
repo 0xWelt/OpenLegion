@@ -8,13 +8,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        // OpenClaw dark theme colors
-        'oc-bg': '#0f0f10',
-        'oc-surface': '#18181a',
-        'oc-surface-hover': '#1f1f22',
-        'oc-border': '#27272a',
-        'oc-text': '#fafafa',
-        'oc-text-muted': '#a1a1aa',
+        // Theme-aware colors using CSS variables
+        'oc-bg': 'rgb(var(--oc-bg))',
+        'oc-surface': 'rgb(var(--oc-surface))',
+        'oc-surface-hover': 'rgb(var(--oc-surface-hover))',
+        'oc-border': 'rgb(var(--oc-border))',
+        'oc-text': 'rgb(var(--oc-text))',
+        'oc-text-muted': 'rgb(var(--oc-text-muted))',
         'oc-primary': '#22c55e',
         'oc-primary-hover': '#16a34a',
         'oc-accent': '#8b5cf6',
