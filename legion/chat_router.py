@@ -154,12 +154,12 @@ async def _process_wire_message(
                     'content': wire_msg.text,
                 }
             )
-        elif isinstance(wire_msg, ThinkPart) and wire_msg.text:
-            logger.debug(f'Sending thinking: {wire_msg.text[:50]}...')
+        elif isinstance(wire_msg, ThinkPart) and wire_msg.think:
+            logger.debug(f'Sending thinking: {wire_msg.think[:50]}...')
             await websocket.send_json(
                 {
                     'type': 'thinking',
-                    'content': wire_msg.text,
+                    'content': wire_msg.think,
                 }
             )
     elif isinstance(wire_msg, ToolCall):

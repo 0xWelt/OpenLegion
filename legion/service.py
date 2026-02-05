@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
+import subprocess
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from typing import Any
 import psutil
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
+from loguru import logger
 from rich.console import Console
 from rich.table import Table
 
@@ -74,44 +76,32 @@ class LegionService:
             console.print('[yellow]Warning: Web UI not built.[/yellow]')
             console.print('[dim]Run: python scripts/build_web.py[/dim]')
 
-        # Fork and start server in background
+        # Start server in background using subprocess
+        stdout = subprocess.DEVNULL
+        stderr = subprocess.DEVNULL
+        creationflags = 0
         if sys.platform == 'win32':
-            # Windows: use subprocess
-            import subprocess
-
-            subprocess.Popen(
-                [sys.executable, '-m', 'legion.server', '--host', host, '--port', str(port)],
-                creationflags=subprocess.CREATE_NEW_CONSOLE,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            creationflags = subprocess.CREATE_NEW_CONSOLE
         else:
-            # Unix: fork
-            pid = os.fork()
-            if pid == 0:
-                # Child process
-                os.setsid()
-                sys.stdout = open(self.log_file, 'w')
-                sys.stderr = sys.stdout
-                from legion import server
+            # Unix: redirect output to log file
+            stdout = open(self.log_file, 'w')  # noqa: SIM115
 
-                server.run_server(host=host, port=port)
-                sys.exit(0)
-            else:
-                # Parent process
-                self.pid_file.write_text(str(pid))
+        subprocess.Popen(  # noqa: S603
+            [sys.executable, '-m', 'legion.server', '--host', host, '--port', str(port)],
+            creationflags=creationflags,
+            stdout=stdout,
+            stderr=stderr,
+            start_new_session=True,
+        )
 
         # Wait a moment and check if started
-        import time
-
         time.sleep(1)
         if self.is_running():
             console.print('[green]Legion started successfully![/green]')
             console.print(f'[dim]Web UI: http://{host}:{port}[/dim]')
             return True
-        else:
-            console.print('[red]Failed to start Legion[/red]')
-            return False
+        console.print('[red]Failed to start Legion[/red]')
+        return False
 
     def stop(self) -> bool:
         """Stop the Legion service."""
@@ -125,9 +115,6 @@ class LegionService:
             process = psutil.Process(pid)
             process.terminate()
             process.wait(timeout=5)
-            self.pid_file.unlink(missing_ok=True)
-            console.print('[green]Legion stopped successfully[/green]')
-            return True
         except psutil.NoSuchProcess:
             self.pid_file.unlink(missing_ok=True)
             console.print('[yellow]Legion was not running[/yellow]')
@@ -135,12 +122,15 @@ class LegionService:
         except psutil.TimeoutExpired:
             console.print('[red]Failed to stop Legion gracefully[/red]')
             return False
+        else:
+            self.pid_file.unlink(missing_ok=True)
+            console.print('[green]Legion stopped successfully[/green]')
+            return True
 
     def restart(self) -> bool:
         """Restart the Legion service."""
         console.print('[cyan]Restarting Legion...[/cyan]')
         self.stop()
-        import time
 
         time.sleep(1)
         return self.start()
@@ -180,7 +170,7 @@ def create_app() -> FastAPI:
     """Create FastAPI application."""
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
+    async def lifespan(_app: FastAPI):
         console.print('[dim]Legion server starting...[/dim]')
         yield
         console.print('[dim]Legion server stopping...[/dim]')
@@ -214,8 +204,8 @@ def create_app() -> FastAPI:
                         'data': message,
                     }
                 )
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f'WebSocket error: {e}')
 
     # Mount static files as fallback (must be after API routes)
     if STATIC_DIR.exists():
@@ -223,7 +213,7 @@ def create_app() -> FastAPI:
     else:
 
         @app.get('/')
-        async def root():
+        async def root() -> dict[str, str]:
             return {
                 'message': 'Legion API Server',
                 'version': '0.1.0',

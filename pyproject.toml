@@ -26,6 +26,7 @@ dependencies = [
     "uvicorn[standard]",
     "websockets",
     "psutil",
+    "kimi-agent-sdk",
 ]
 
 [project.scripts]
@@ -156,6 +157,7 @@ ignore = [
     "COM812",  # missing-trailing-comma
     "E501",    # line-too-long
     "N802",    # invalid-function-name
+    "PLR2004", # magic value used in comparison
     "PT012",   # pytest-raises-with-multiple-statements
     "PT028",   # pytest-parameter-with-default-argument
     "RUF005",  # collection-literal-concatenation

@@ -97,14 +97,14 @@ export default function Chat() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [showSidebar, setShowSidebar] = useState(true)
-  
+
   // Status and settings
   const [statusInfo, setStatusInfo] = useState<StatusInfo>({ context_usage: null, token_usage: null })
   const [thinkingEnabled, setThinkingEnabled] = useState(true)
   const [selectedModel, setSelectedModel] = useState('kimi-k2-5')
   const [showModelSelector, setShowModelSelector] = useState(false)
   const [blocksExpanded, setBlocksExpanded] = useState(false)
-  
+
   // Collapsible sections - store expanded state for each message id
   const [expandedThink, setExpandedThink] = useState<Set<string>>(new Set())
   const [expandedTool, setExpandedTool] = useState<Set<string>>(new Set())
@@ -319,7 +319,7 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: editTitle })
       })
-      setConversations((prev) => prev.map((c) => 
+      setConversations((prev) => prev.map((c) =>
         c.id === id ? { ...c, title: editTitle } : c
       ))
     } catch (err) {
@@ -336,20 +336,20 @@ export default function Chat() {
   // Upload file to backend
   const uploadFile = async (file: File): Promise<UploadedFile | null> => {
     if (!convId) return null
-    
+
     const formData = new FormData()
     formData.append('file', file)
-    
+
     try {
       const res = await fetch(`/api/conversations/${convId}/upload`, {
         method: 'POST',
         body: formData
       })
-      
+
       if (!res.ok) {
         throw new Error(`Upload failed: ${res.statusText}`)
       }
-      
+
       const data = await res.json()
       return { url: data.url, filename: data.filename }
     } catch (err) {
@@ -362,10 +362,10 @@ export default function Chat() {
     if ((!input.trim() && attachments.length === 0) || !wsRef.current || !isConnected) return
 
     setIsLoading(true)
-    
+
     // Upload any pending image attachments first
     const uploadedAttachments: { type: string; url: string; filename: string; mediaType: string }[] = []
-    
+
     for (const attachment of attachments) {
       if (attachment.type === 'image' && attachment.file && !attachment.uploadedUrl) {
         const uploaded = await uploadFile(attachment.file)
@@ -387,14 +387,14 @@ export default function Chat() {
         })
       }
     }
-    
-    wsRef.current.send(JSON.stringify({ 
+
+    wsRef.current.send(JSON.stringify({
       message: input,
       thinking: thinkingEnabled,
       model: selectedModel,
       attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined
     }))
-    
+
     setInput('')
     setAttachments([])
     if (textareaRef.current) {
@@ -429,7 +429,7 @@ export default function Chat() {
         file: file
       }])
     })
-    
+
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -451,7 +451,7 @@ export default function Chat() {
     setMessages([])
     setStatusInfo({ context_usage: null, token_usage: null })
     setAttachments([])
-    
+
     // Load conversation history
     try {
       const res = await fetch(`/api/conversations/${id}/history`)
@@ -565,7 +565,7 @@ export default function Chat() {
   const renderThinkingBlock = (msg: Message, index: number) => {
     const isExpanded = blocksExpanded || expandedThink.has(msg.id)
     const isActive = isThinkingActive(index)
-    
+
     return (
       <div key={msg.id} className="flex justify-start">
         <div className="max-w-[90%] w-full rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-950/10 overflow-hidden">
@@ -591,7 +591,7 @@ export default function Chat() {
   const renderToolCall = (msg: Message) => {
     const isExpanded = blocksExpanded || expandedTool.has(msg.id)
     const toolName = msg.metadata?.tool_name || 'unknown'
-    
+
     return (
       <div key={msg.id} className="flex justify-start">
         <div className="max-w-[90%] w-full rounded-lg border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/10 overflow-hidden">
@@ -655,10 +655,10 @@ export default function Chat() {
   // Group messages for display
   const renderMessages = () => {
     const elements: JSX.Element[] = []
-    
+
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i]
-      
+
       switch (msg.role) {
         case 'user':
           elements.push(renderUserMessage(msg))
@@ -683,7 +683,7 @@ export default function Chat() {
           break
       }
     }
-    
+
     return elements
   }
 
@@ -719,7 +719,7 @@ export default function Chat() {
               )}
             >
               <MessageSquare size={16} className="text-muted-foreground shrink-0" />
-              
+
               <div className="flex-1 min-w-0">
                 {editingId === conv.id ? (
                   <div className="flex items-center gap-1">
@@ -811,7 +811,7 @@ export default function Chat() {
               ) : null}
             </div>
           </div>
-          
+
           <div className="flex items-center justify-end gap-2">
             {convId && (
               <>
@@ -971,12 +971,12 @@ export default function Chat() {
                     <Cpu className="size-4 shrink-0" />
                     <span className="truncate">{selectedModel}</span>
                   </button>
-                  
+
                   {/* Model Dropdown */}
                   {showModelSelector && (
                     <>
-                      <div 
-                        className="fixed inset-0 z-40" 
+                      <div
+                        className="fixed inset-0 z-40"
                         onClick={() => setShowModelSelector(false)}
                       />
                       <div className="absolute bottom-full left-0 mb-1 w-64 bg-background border border-border rounded-lg shadow-lg z-50 py-1">
@@ -1046,7 +1046,7 @@ export default function Chat() {
                 <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground mr-2">
                   <span>{formatContextUsage()} context</span>
                 </div>
-                
+
                 {isLoading ? (
                   <button
                     onClick={() => {}}

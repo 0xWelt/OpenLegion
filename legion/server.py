@@ -7,6 +7,8 @@ import os
 import sys
 from pathlib import Path
 
+import uvicorn
+
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -16,8 +18,6 @@ from legion.service import create_app
 
 def run_server(host: str = '127.0.0.1', port: int = 18790) -> None:
     """Run the Legion server."""
-    import uvicorn
-
     app = create_app()
 
     # Write PID file
