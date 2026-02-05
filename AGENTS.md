@@ -25,4 +25,4 @@
 ## Project
 
 - The project has a frontend-backend separated structure; the frontend implementation is largely based on [kimi-cli](https://github.com/MoonshotAI/kimi-cli). Refer to that repo when you need details.
-- kimi-cli is the only agent harness. Backend and kimi-cli communicate via [wire mode](https://moonshotai.github.io/kimi-cli/zh/customization/wire-mode.html). Refer to the wire-mode docs and the kimi-cli source when you need details.
+- kimi-agent-sdk is the only agent harness. Refer to its [source code]((https://github.com/MoonshotAI/kimi-agent-sdk)) and [examples](https://github.com/MoonshotAI/kimi-agent-sdk/tree/main/examples/python) when you need details.

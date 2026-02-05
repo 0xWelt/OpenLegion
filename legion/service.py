@@ -16,6 +16,10 @@ from fastapi.staticfiles import StaticFiles
 from rich.console import Console
 from rich.table import Table
 
+from legion.chat_router import router as chat_router
+from legion.conversations import conversation_manager
+
+
 console = Console()
 
 PID_FILE = Path.home() / '.legion' / 'legion.pid'
@@ -68,12 +72,13 @@ class LegionService:
         # Check if web UI is built
         if not STATIC_DIR.exists():
             console.print('[yellow]Warning: Web UI not built.[/yellow]')
-            console.print(f'[dim]Run: python scripts/build_web.py[/dim]')
+            console.print('[dim]Run: python scripts/build_web.py[/dim]')
 
         # Fork and start server in background
         if sys.platform == 'win32':
             # Windows: use subprocess
             import subprocess
+
             subprocess.Popen(
                 [sys.executable, '-m', 'legion.server', '--host', host, '--port', str(port)],
                 creationflags=subprocess.CREATE_NEW_CONSOLE,
@@ -88,7 +93,8 @@ class LegionService:
                 os.setsid()
                 sys.stdout = open(self.log_file, 'w')
                 sys.stderr = sys.stdout
-                import legion.server as server
+                from legion import server
+
                 server.run_server(host=host, port=port)
                 sys.exit(0)
             else:
@@ -97,9 +103,10 @@ class LegionService:
 
         # Wait a moment and check if started
         import time
+
         time.sleep(1)
         if self.is_running():
-            console.print(f'[green]Legion started successfully![/green]')
+            console.print('[green]Legion started successfully![/green]')
             console.print(f'[dim]Web UI: http://{host}:{port}[/dim]')
             return True
         else:
@@ -134,6 +141,7 @@ class LegionService:
         console.print('[cyan]Restarting Legion...[/cyan]')
         self.stop()
         import time
+
         time.sleep(1)
         return self.start()
 
@@ -161,20 +169,28 @@ class LegionService:
 
         table.add_row('PID File', str(self.pid_file))
         table.add_row('Log File', str(self.log_file))
-        table.add_row('Web UI Built', '[green]Yes[/green]' if STATIC_DIR.exists() else '[red]No[/red]')
+        table.add_row(
+            'Web UI Built', '[green]Yes[/green]' if STATIC_DIR.exists() else '[red]No[/red]'
+        )
 
         console.print(table)
 
 
 def create_app() -> FastAPI:
     """Create FastAPI application."""
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         console.print('[dim]Legion server starting...[/dim]')
         yield
         console.print('[dim]Legion server stopping...[/dim]')
+        # Close all conversation sessions on shutdown
+        await conversation_manager.close_all()
 
     app = FastAPI(title='Legion', version='0.1.0', lifespan=lifespan)
+
+    # Include chat router
+    app.include_router(chat_router)
 
     @app.get('/api/status')
     async def get_status() -> dict[str, Any]:
@@ -192,17 +208,20 @@ def create_app() -> FastAPI:
                 data = await websocket.receive_text()
                 message = json.loads(data)
                 # Echo back for now
-                await websocket.send_json({
-                    'type': 'echo',
-                    'data': message,
-                })
+                await websocket.send_json(
+                    {
+                        'type': 'echo',
+                        'data': message,
+                    }
+                )
         except Exception:
             pass
 
     # Mount static files as fallback (must be after API routes)
     if STATIC_DIR.exists():
-        app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+        app.mount('/', StaticFiles(directory=STATIC_DIR, html=True), name='static')
     else:
+
         @app.get('/')
         async def root():
             return {

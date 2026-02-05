@@ -26,7 +26,7 @@ dependencies = [
     "uvicorn[standard]",
     "websockets",
     "psutil",
-] 
+]
 
 [project.scripts]
 legion = "legion.cli:main"

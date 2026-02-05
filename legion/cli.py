@@ -7,6 +7,7 @@ from rich.console import Console
 
 from legion.service import LegionService
 
+
 app = typer.Typer(name='legion', help='Legion - Yet another OpenClaw')
 console = Console()
 
@@ -37,6 +38,7 @@ def restart(
     service = LegionService()
     service.stop()
     import time
+
     time.sleep(1)
     service.start(host=host, port=port)
 
@@ -52,6 +54,7 @@ def status() -> None:
 def web() -> None:
     """Open Legion web UI."""
     import webbrowser
+
     service = LegionService()
     if not service.is_running():
         console.print('[yellow]Legion is not running. Starting...[/yellow]')

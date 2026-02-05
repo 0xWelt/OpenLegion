@@ -12,12 +12,12 @@ export default function Layout() {
       <div className={sidebarOpen ? 'w-56' : 'w-14'}>
         <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
       </div>
-      
+
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <Header 
-          sidebarOpen={sidebarOpen} 
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} 
+        <Header
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         />
         <main className="flex-1 overflow-auto scrollbar-thin p-6">
           <Outlet />
