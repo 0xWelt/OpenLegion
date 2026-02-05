@@ -1,75 +1,38 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import clsx from 'clsx'
 import {
-  Plus,
-  Trash2,
-  MessageSquare,
-  X,
   Check,
-  Edit2,
+  Paperclip,
+  X,
+  Loader2,
   ChevronDown,
   ChevronRight,
   Wrench,
-  CheckCircle2,
   Brain,
-  Paperclip,
-  Cpu,
+  CheckCircle2,
   AlertCircle,
-  CornerDownLeft,
-  Square,
+  Cpu,
   Search,
-  ChevronsUpDown,
-  ChevronsDownUp,
-  PanelLeftOpen,
   Info,
-  Loader2,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Square,
+  CornerDownLeft,
+  MessageSquare,
+  Plus
 } from 'lucide-react'
-import clsx from 'clsx'
-
-interface Conversation {
-  id: string
-  title: string
-  session_id: string
-  work_dir: string
-  created_at: string
-  updated_at: string
-  message_count: number
-}
-
-interface TokenUsage {
-  prompt_tokens: number
-  completion_tokens: number
-  total_tokens: number
-}
-
-interface StatusInfo {
-  context_usage: number | null
-  token_usage: TokenUsage | null
-}
 
 interface Message {
   id: string
-  role: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'approval' | 'error'
+  role: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'error' | 'approval'
   content: string
   metadata?: {
     tool_name?: string
     arguments?: Record<string, unknown>
     tool_call_id?: string
     output?: string
-    action?: string
-    description?: string
-    is_error?: boolean
   }
-}
-
-interface FileAttachment {
-  id: string
-  type: 'file' | 'image'
-  url: string  // blob URL for preview
-  mediaType: string
-  filename: string
-  file?: File  // actual file object
-  uploadedUrl?: string  // URL returned from backend after upload
 }
 
 interface UploadedFile {
@@ -77,69 +40,62 @@ interface UploadedFile {
   filename: string
 }
 
-interface Model {
+interface Attachment {
   id: string
-  name: string
-  provider: string
+  type: 'image' | 'file'
+  url: string
+  filename: string
+  mediaType: string
+  file?: File
+  uploadedUrl?: string
 }
+
+const models = [
+  { id: 'kimi-k2-0711-preview', name: 'Kimi K2 Preview', provider: 'Moonshot' },
+  { id: 'kimi-k2-0711', name: 'Kimi K2', provider: 'Moonshot' },
+  { id: 'kimi-latest', name: 'Kimi Latest', provider: 'Moonshot' }
+]
 
 export default function Chat() {
   const [searchParams, setSearchParams] = useSearchParams()
   const convId = searchParams.get('id')
 
-  const [conversations, setConversations] = useState<Conversation[]>([])
+  // Messages state
   const [messages, setMessages] = useState<Message[]>([])
   const [streamingContent, setStreamingContent] = useState('')
-  const [input, setInput] = useState('')
-  const [attachments, setAttachments] = useState<FileAttachment[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [isConnected, setIsConnected] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editTitle, setEditTitle] = useState('')
-  const [showSidebar, setShowSidebar] = useState(true)
 
-  // Status and settings
-  const [statusInfo, setStatusInfo] = useState<StatusInfo>({ context_usage: null, token_usage: null })
-  const [thinkingEnabled, setThinkingEnabled] = useState(true)
-  const [selectedModel, setSelectedModel] = useState('kimi-k2-5')
-  const [showModelSelector, setShowModelSelector] = useState(false)
-  const [blocksExpanded, setBlocksExpanded] = useState(false)
-
-  // Collapsible sections - store expanded state for each message id
-  const [expandedThink, setExpandedThink] = useState<Set<string>>(new Set())
-  const [expandedTool, setExpandedTool] = useState<Set<string>>(new Set())
-
-  const wsRef = useRef<WebSocket | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  // Input state
+  const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [attachments, setAttachments] = useState<Attachment[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const models: Model[] = [
-    { id: 'kimi-k2-5', name: 'kimi-k2-5', provider: 'moonshotai' },
-    { id: 'kimi-k2-thinking-turbo', name: 'kimi-k2-thinking-turbo', provider: 'moonshotai' },
-    { id: 'gpt-5', name: 'gpt-5', provider: 'openai' },
-    { id: 'claude-sonnet-4-5', name: 'claude-sonnet-4-5', provider: 'anthropic' },
-    { id: 'gemini-3-pro', name: 'gemini-3-pro', provider: 'google' },
-  ]
+  // WebSocket state
+  const wsRef = useRef<WebSocket | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
+  const [statusInfo, setStatusInfo] = useState<{ context_usage: number | null; token_usage: number | null }>({
+    context_usage: null,
+    token_usage: null
+  })
 
-  // Fetch conversations list
-  const fetchConversations = useCallback(async () => {
-    try {
-      const res = await fetch('/api/conversations')
-      const data = await res.json()
-      setConversations(data.conversations || [])
-    } catch (err) {
-      console.error('Failed to fetch conversations:', err)
-    }
-  }, [])
+  // UI state
+  const [thinkingEnabled, setThinkingEnabled] = useState(false)
+  const [selectedModel, setSelectedModel] = useState('kimi-k2-0711-preview')
+  const [showModelSelector, setShowModelSelector] = useState(false)
+  const [expandedThink, setExpandedThink] = useState<Set<string>>(new Set())
+  const [expandedTool, setExpandedTool] = useState<Set<string>>(new Set())
+  const [blocksExpanded, setBlocksExpanded] = useState(false)
 
-  useEffect(() => {
-    fetchConversations()
-  }, [fetchConversations])
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Scroll to bottom when messages or streaming content changes
-  useEffect(() => {
+  // Scroll to bottom when messages change
+  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
   }, [messages, streamingContent])
 
   // Auto-resize textarea
@@ -150,22 +106,86 @@ export default function Chat() {
     }
   }, [input])
 
-  // Connect WebSocket when conversation changes
+  // Load conversation history when convId changes
+  const loadConversation = useCallback(async (id: string) => {
+    setStreamingContent('')
+    setMessages([])
+    setStatusInfo({ context_usage: null, token_usage: null })
+    setAttachments([])
+
+    try {
+      const res = await fetch(`/api/conversations/${id}/history`)
+      const data = await res.json()
+      if (data.messages) {
+        const historyMessages: Message[] = []
+        let msgIndex = 0
+        for (const msg of data.messages) {
+          const baseId = `hist-${msgIndex}`
+          if (msg.type === 'user') {
+            historyMessages.push({
+              id: baseId,
+              role: 'user',
+              content: msg.content
+            })
+          } else if (msg.type === 'assistant') {
+            historyMessages.push({
+              id: baseId,
+              role: 'assistant',
+              content: msg.content
+            })
+            // Add thinking if present
+            if (msg.thinking) {
+              historyMessages.push({
+                id: `${baseId}-think`,
+                role: 'thinking',
+                content: msg.thinking
+              })
+            }
+          } else if (msg.type === 'tool_result') {
+            historyMessages.push({
+              id: baseId,
+              role: 'tool_result',
+              content: msg.output,
+              metadata: {
+                tool_call_id: msg.tool_call_id,
+                output: msg.output
+              }
+            })
+          }
+          msgIndex++
+        }
+        setMessages(historyMessages)
+      }
+    } catch (err) {
+      console.error('Failed to load history:', err)
+    }
+  }, [])
+
+  // Listen for conversation changes from URL
+  useEffect(() => {
+    if (convId) {
+      loadConversation(convId)
+    } else {
+      setMessages([])
+      setStreamingContent('')
+      setStatusInfo({ context_usage: null, token_usage: null })
+      setAttachments([])
+    }
+  }, [convId, loadConversation])
+
+  // WebSocket connection
   useEffect(() => {
     if (!convId) {
-      setMessages([])
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
       setIsConnected(false)
-      setStatusInfo({ context_usage: null, token_usage: null })
       return
     }
 
-    if (wsRef.current) {
-      wsRef.current.close()
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/conversations/ws/${convId}`)
-    wsRef.current = ws
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/conversations/ws/${convId}`
+    const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
       setIsConnected(true)
@@ -175,87 +195,88 @@ export default function Chat() {
       const data = JSON.parse(event.data)
 
       switch (data.type) {
-        case 'user':
-          setMessages((prev) => [...prev, {
-            id: Date.now().toString(),
-            role: 'user',
-            content: data.content
-          }])
-          break
-        case 'chunk':
-          setStreamingContent((prev) => prev + data.content)
-          break
-        case 'assistant':
-          setMessages((prev) => [...prev, {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: data.content
-          }])
-          setStreamingContent('')
-          setIsLoading(false)
-          break
-        case 'thinking':
-          setMessages((prev) => {
-            const last = prev[prev.length - 1]
-            if (last && last.role === 'thinking') {
-              return [...prev.slice(0, -1), {
-                ...last,
-                content: last.content + data.content
-              }]
-            }
-            return [...prev, {
-              id: Date.now().toString(),
-              role: 'thinking',
-              content: data.content
-            }]
-          })
-          break
-        case 'tool_call':
-          setMessages((prev) => [...prev, {
-            id: Date.now().toString(),
-            role: 'tool_call',
-            content: '',
-            metadata: {
-              tool_name: data.tool_name,
-              arguments: data.arguments
-            }
-          }])
-          break
-        case 'tool_result':
-          setMessages((prev) => [...prev, {
-            id: Date.now().toString(),
-            role: 'tool_result',
-            content: data.output || '',
-            metadata: {
-              tool_call_id: data.tool_call_id,
-              output: data.output
-            }
-          }])
-          break
-        case 'approval':
-          setMessages((prev) => [...prev, {
-            id: Date.now().toString(),
-            role: 'approval',
-            content: `Approved: ${data.action}`,
-            metadata: {
-              action: data.action,
-              description: data.description
-            }
-          }])
-          break
         case 'status':
           setStatusInfo({
-            context_usage: data.context_usage,
-            token_usage: data.token_usage
+            context_usage: data.context_usage ?? null,
+            token_usage: data.token_usage ?? null
           })
           break
-        case 'error':
-          setMessages((prev) => [...prev, {
-            id: Date.now().toString(),
-            role: 'error',
-            content: data.message || 'An error occurred'
-          }])
+
+        case 'text':
+          setStreamingContent((prev) => prev + data.content)
+          break
+
+        case 'think':
+          setMessages((prev) => {
+            const lastMsg = prev[prev.length - 1]
+            if (lastMsg?.role === 'thinking') {
+              return [
+                ...prev.slice(0, -1),
+                { ...lastMsg, content: lastMsg.content + data.content }
+              ]
+            }
+            return [...prev, { id: `think-${Date.now()}`, role: 'thinking', content: data.content }]
+          })
+          break
+
+        case 'tool_call':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `tool-${Date.now()}`,
+              role: 'tool_call',
+              content: '',
+              metadata: {
+                tool_name: data.tool_name,
+                arguments: data.arguments
+              }
+            }
+          ])
+          break
+
+        case 'tool_result':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `result-${Date.now()}`,
+              role: 'tool_result',
+              content: data.output,
+              metadata: {
+                tool_call_id: data.tool_call_id,
+                output: data.output
+              }
+            }
+          ])
+          break
+
+        case 'complete':
+          if (streamingContent) {
+            setMessages((prev) => [
+              ...prev,
+              { id: `msg-${Date.now()}`, role: 'assistant', content: streamingContent }
+            ])
+            setStreamingContent('')
+          }
           setIsLoading(false)
+          break
+
+        case 'error':
+          setMessages((prev) => [
+            ...prev,
+            { id: `error-${Date.now()}`, role: 'error', content: data.message }
+          ])
+          setIsLoading(false)
+          break
+
+        case 'approval_request':
+          // TODO: Handle approval requests
+          break
+
+        case 'approval_result':
+          setMessages((prev) => [
+            ...prev,
+            { id: `approval-${Date.now()}`, role: 'approval', content: data.approved ? 'Approved' : 'Rejected' }
+          ])
           break
       }
     }
@@ -264,74 +285,17 @@ export default function Chat() {
       setIsConnected(false)
     }
 
-    ws.onerror = () => {
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
       setIsConnected(false)
     }
+
+    wsRef.current = ws
 
     return () => {
       ws.close()
     }
-  }, [convId])
-
-  const createConversation = async () => {
-    try {
-      const res = await fetch('/api/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'New Conversation' })
-      })
-      const data = await res.json()
-      if (data.conversation) {
-        setConversations((prev) => [data.conversation, ...prev])
-        setSearchParams({ id: data.conversation.id })
-      }
-    } catch (err) {
-      console.error('Failed to create conversation:', err)
-    }
-  }
-
-  const deleteConversation = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!confirm('Are you sure you want to delete this conversation?')) return
-
-    try {
-      await fetch(`/api/conversations/${id}`, { method: 'DELETE' })
-      setConversations((prev) => prev.filter((c) => c.id !== id))
-      if (convId === id) {
-        setSearchParams({})
-        setMessages([])
-      }
-    } catch (err) {
-      console.error('Failed to delete conversation:', err)
-    }
-  }
-
-  const startEditTitle = (conv: Conversation, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setEditingId(conv.id)
-    setEditTitle(conv.title)
-  }
-
-  const saveTitle = async (id: string) => {
-    try {
-      await fetch(`/api/conversations/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: editTitle })
-      })
-      setConversations((prev) => prev.map((c) =>
-        c.id === id ? { ...c, title: editTitle } : c
-      ))
-    } catch (err) {
-      console.error('Failed to update title:', err)
-    }
-    setEditingId(null)
-  }
-
-  const cancelEdit = () => {
-    setEditingId(null)
-    setEditTitle('')
-  }
+  }, [convId, streamingContent])
 
   // Upload file to backend
   const uploadFile = async (file: File): Promise<UploadedFile | null> => {
@@ -445,65 +409,20 @@ export default function Chat() {
     })
   }
 
-  const selectConversation = async (id: string) => {
-    setStreamingContent('')
-    setSearchParams({ id })
-    setMessages([])
-    setStatusInfo({ context_usage: null, token_usage: null })
-    setAttachments([])
-
-    // Load conversation history
+  const createConversation = async () => {
     try {
-      const res = await fetch(`/api/conversations/${id}/history`)
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New Conversation' })
+      })
       const data = await res.json()
-      if (data.messages) {
-        const historyMessages: Message[] = []
-        let msgIndex = 0
-        for (const msg of data.messages) {
-          const baseId = `hist-${msgIndex}`
-          if (msg.type === 'user') {
-            historyMessages.push({
-              id: baseId,
-              role: 'user',
-              content: msg.content
-            })
-          } else if (msg.type === 'assistant') {
-            historyMessages.push({
-              id: baseId,
-              role: 'assistant',
-              content: msg.content
-            })
-            // Add thinking if present
-            if (msg.thinking) {
-              historyMessages.push({
-                id: `${baseId}-think`,
-                role: 'thinking',
-                content: msg.thinking
-              })
-            }
-          } else if (msg.type === 'tool_result') {
-            historyMessages.push({
-              id: baseId,
-              role: 'tool_result',
-              content: msg.output,
-              metadata: {
-                tool_call_id: msg.tool_call_id,
-                output: msg.output
-              }
-            })
-          }
-          msgIndex++
-        }
-        setMessages(historyMessages)
+      if (data.conversation) {
+        setSearchParams({ id: data.conversation.id })
       }
     } catch (err) {
-      console.error('Failed to load history:', err)
+      console.error('Failed to create conversation:', err)
     }
-  }
-
-  const formatTime = (isoString: string) => {
-    const date = new Date(isoString)
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
   const formatContextUsage = () => {
@@ -511,8 +430,6 @@ export default function Chat() {
     if (usage === null) return '--'
     return `${Math.round(usage * 100)}%`
   }
-
-  const currentConv = conversations.find(c => c.id === convId)
 
   // Toggle thinking block expansion
   const toggleThinkExpanded = (id: string) => {
@@ -540,12 +457,12 @@ export default function Chat() {
     })
   }
 
-  // Check if a thinking block is currently streaming (last thinking message while loading)
+  // Check if a thinking block is currently streaming
   const isThinkingActive = (index: number): boolean => {
     return isLoading && index === messages.length - 1 && messages[index]?.role === 'thinking'
   }
 
-  // Render message components based on kimi-cli style
+  // Render message components
   const renderUserMessage = (msg: Message) => (
     <div key={msg.id} className="flex justify-end">
       <div className="max-w-[80%] rounded-2xl bg-secondary/80 dark:bg-secondary/50 px-4 py-3 text-sm">
@@ -688,384 +605,276 @@ export default function Chat() {
   }
 
   return (
-    <div className="h-full flex bg-background">
-      {/* Sidebar */}
-      <div className={clsx(
-        'border-r border-border bg-background flex flex-col transition-all duration-200',
-        showSidebar ? 'w-64' : 'w-0 overflow-hidden'
-      )}>
-        {/* Sidebar Header */}
-        <div className="p-3 border-b border-border">
-          <button
-            onClick={createConversation}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
-          >
-            <Plus size={16} />
-            <span>New Chat</span>
-          </button>
-        </div>
-
-        {/* Conversations List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {conversations.map((conv) => (
-            <div
-              key={conv.id}
-              onClick={() => selectConversation(conv.id)}
-              className={clsx(
-                'group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors',
-                convId === conv.id
-                  ? 'bg-secondary/60'
-                  : 'hover:bg-secondary/40'
-              )}
-            >
-              <MessageSquare size={16} className="text-muted-foreground shrink-0" />
-
-              <div className="flex-1 min-w-0">
-                {editingId === conv.id ? (
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="text"
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveTitle(conv.id)
-                        if (e.key === 'Escape') cancelEdit()
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex-1 min-w-0 px-1 py-0.5 text-sm bg-background border border-primary rounded"
-                      autoFocus
-                    />
-                    <button
-                      onClick={(e) => { e.stopPropagation(); saveTitle(conv.id); }}
-                      className="p-0.5 text-primary hover:bg-secondary/60 rounded"
-                    >
-                      <Check size={14} />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); cancelEdit(); }}
-                      className="p-0.5 text-muted-foreground hover:bg-secondary/60 rounded"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-sm font-medium truncate">{conv.title}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {formatTime(conv.updated_at)}
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {editingId !== conv.id && (
-                <div className="hidden group-hover:flex items-center gap-1">
-                  <button
-                    onClick={(e) => startEditTitle(conv, e)}
-                    className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary/60 rounded"
-                  >
-                    <Edit2 size={12} />
-                  </button>
-                  <button
-                    onClick={(e) => deleteConversation(conv.id, e)}
-                    className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {conversations.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              No conversations yet
-              <br />
-              Click "New Chat" to start
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Chat Header - Kimi CLI Style */}
-        <div className="flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3 lg:pl-8 border-b border-border">
-          <div className="flex min-w-0 items-center gap-2">
-            <button
-              type="button"
-              aria-label="Open sessions sidebar"
-              className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground lg:hidden"
-              onClick={() => setShowSidebar(true)}
-            >
-              <PanelLeftOpen className="size-4" />
-            </button>
-            <div className="min-w-0 flex-1">
-              {currentConv ? (
-                <button
-                  type="button"
-                  className="truncate text-xs font-bold cursor-pointer hover:text-primary text-left bg-transparent border-none p-0"
-                >
-                  {currentConv.title}
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2">
-            {convId && (
-              <>
-                {/* Context Usage */}
-                <div className="relative">
-                  <button className="flex items-center gap-1.5 text-xs text-muted-foreground select-none hover:text-foreground transition-colors">
-                    <span>{formatContextUsage()} context</span>
-                    <Info className="size-3" />
-                  </button>
-                </div>
-
-                {/* Search Button */}
-                <button
-                  type="button"
-                  aria-label="Search messages"
-                  className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-                >
-                  <Search className="size-4" />
-                </button>
-
-                {/* Toggle Blocks Button */}
-                <button
-                  type="button"
-                  aria-label={blocksExpanded ? "Fold all blocks" : "Unfold all blocks"}
-                  className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-                  onClick={() => setBlocksExpanded(!blocksExpanded)}
-                >
-                  {blocksExpanded ? (
-                    <ChevronsDownUp className="size-4" />
-                  ) : (
-                    <ChevronsUpDown className="size-4" />
-                  )}
-                </button>
-              </>
+    <div className="h-full flex flex-col bg-background">
+      {/* Chat Header */}
+      <div className="flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3 lg:pl-8 border-b border-border">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1">
+            {convId ? (
+              <span className="text-xs font-bold text-muted-foreground">
+                Active Session
+              </span>
+            ) : (
+              <span className="text-xs font-bold text-muted-foreground">
+                No Active Session
+              </span>
             )}
           </div>
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {!convId ? (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
-                <MessageSquare size={32} className="text-primary" />
-              </div>
-              <p className="text-lg font-medium">Welcome to Legion Chat</p>
-              <p className="text-sm mt-2">Select a conversation or create a new one</p>
-              <button
-                onClick={createConversation}
-                className="mt-6 flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-              >
-                <Plus size={16} />
-                <span>New Chat</span>
-              </button>
-            </div>
-          ) : messages.length === 0 && !streamingContent ? (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-              <p className="text-sm">Start a new conversation</p>
-            </div>
-          ) : (
+        <div className="flex items-center justify-end gap-2">
+          {convId && (
             <>
-              {renderMessages()}
-              {/* Streaming content */}
-              {streamingContent && (
-                <div className="flex justify-start">
-                  <div className="max-w-[85%]">
-                    <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                      {streamingContent}
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Context Usage */}
+              <div className="relative">
+                <button className="flex items-center gap-1.5 text-xs text-muted-foreground select-none hover:text-foreground transition-colors">
+                  <span>{formatContextUsage()} context</span>
+                  <Info className="size-3" />
+                </button>
+              </div>
+
+              {/* Search Button */}
+              <button
+                type="button"
+                aria-label="Search messages"
+                className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+              >
+                <Search className="size-4" />
+              </button>
+
+              {/* Toggle Blocks Button */}
+              <button
+                type="button"
+                aria-label={blocksExpanded ? 'Fold all blocks' : 'Unfold all blocks'}
+                className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                onClick={() => setBlocksExpanded(!blocksExpanded)}
+              >
+                {blocksExpanded ? (
+                  <ChevronsDownUp className="size-4" />
+                ) : (
+                  <ChevronsUpDown className="size-4" />
+                )}
+              </button>
             </>
           )}
-          <div ref={messagesEndRef} />
         </div>
+      </div>
 
-        {/* Input Area - Kimi CLI Style */}
-        <div className="w-full px-2 sm:px-4 pb-4">
-          {/* Attachments Preview */}
-          {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-2 px-1">
-              {attachments.map((file) => (
-                <div
-                  key={file.id}
-                  className="group relative flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-border bg-background text-xs"
-                >
-                  {file.type === 'image' ? (
-                    <img src={file.url} alt="" className="w-6 h-6 rounded object-cover" />
-                  ) : (
-                    <Paperclip size={14} className="text-muted-foreground" />
-                  )}
-                  <span className="truncate max-w-[120px]">{file.filename}</span>
-                  <button
-                    onClick={() => removeAttachment(file.id)}
-                    className="p-0.5 hover:bg-secondary/60 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {!convId ? (
+          <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
+              <MessageSquare size={32} className="text-primary" />
             </div>
-          )}
+            <p className="text-lg font-medium">Welcome to Legion Chat</p>
+            <p className="text-sm mt-2">Select a conversation or create a new one</p>
+            <button
+              onClick={createConversation}
+              className="mt-6 flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              <Plus size={16} />
+              <span>New Chat</span>
+            </button>
+          </div>
+        ) : messages.length === 0 && !streamingContent ? (
+          <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+            <p className="text-sm">Start a new conversation</p>
+          </div>
+        ) : (
+          <>
+            {renderMessages()}
+            {/* Streaming content */}
+            {streamingContent && (
+              <div className="flex justify-start">
+                <div className="max-w-[85%]">
+                  <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                    {streamingContent}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
 
-          {/* Input Container */}
-          <div className="w-full border border-border rounded-2xl overflow-hidden bg-background shadow-sm">
-            {/* Text Input */}
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                !convId
-                  ? "Create a session to start..."
-                  : !isConnected
-                    ? "Connecting to environment..."
-                    : "What would you like to know?"
-              }
-              disabled={!convId || isLoading || !isConnected}
-              rows={1}
-              className="w-full bg-transparent border-none px-4 py-3 text-sm resize-none focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed min-h-[64px] max-h-[200px] field-sizing-content"
-            />
-
-            {/* Footer Toolbar - Kimi CLI Style */}
-            <div className="flex items-center justify-between px-2 pb-2">
-              {/* Left Tools */}
-              <div className="flex items-center gap-1">
-                {/* File Upload */}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  multiple
-                  accept="image/*,.txt,.md,.json,.csv,.py,.js,.ts,.tsx,.html,.css,.yaml,.yml,.xml,.pdf"
-                  className="hidden"
-                />
+      {/* Input Area */}
+      <div className="w-full px-2 sm:px-4 pb-4">
+        {/* Attachments Preview */}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2 px-1">
+            {attachments.map((file) => (
+              <div
+                key={file.id}
+                className="group relative flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-border bg-background text-xs"
+              >
+                {file.type === 'image' ? (
+                  <img src={file.url} alt="" className="w-6 h-6 rounded object-cover" />
+                ) : (
+                  <Paperclip size={14} className="text-muted-foreground" />
+                )}
+                <span className="truncate max-w-[120px]">{file.filename}</span>
                 <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={!convId || isLoading}
-                  className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
-                  aria-label="Attach files"
-                  title="Attach files"
+                  onClick={() => removeAttachment(file.id)}
+                  className="p-0.5 hover:bg-secondary/60 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                 >
-                  <Paperclip className="size-4" />
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Input Container */}
+        <div className="w-full border border-border rounded-2xl overflow-hidden bg-background shadow-sm">
+          {/* Text Input */}
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              !convId
+                ? 'Create a session to start...'
+                : !isConnected
+                  ? 'Connecting to environment...'
+                  : 'What would you like to know?'
+            }
+            disabled={!convId || isLoading || !isConnected}
+            rows={1}
+            className="w-full bg-transparent border-none px-4 py-3 text-sm resize-none focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed min-h-[64px] max-h-[200px] field-sizing-content"
+          />
+
+          {/* Footer Toolbar */}
+          <div className="flex items-center justify-between px-2 pb-2">
+            {/* Left Tools */}
+            <div className="flex items-center gap-1">
+              {/* File Upload */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                multiple
+                accept="image/*,.txt,.md,.json,.csv,.py,.js,.ts,.tsx,.html,.css,.yaml,.yml,.xml,.pdf"
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!convId || isLoading}
+                className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
+                aria-label="Attach files"
+                title="Attach files"
+              >
+                <Paperclip className="size-4" />
+              </button>
+
+              <div className="mx-0.5 h-4 w-px bg-border/70" />
+
+              {/* Model Selector */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowModelSelector(!showModelSelector)}
+                  disabled={!convId || isLoading}
+                  className="inline-flex h-9 max-w-[160px] items-center justify-start gap-2 border-0 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
+                >
+                  <Cpu className="size-4 shrink-0" />
+                  <span className="truncate">{selectedModel}</span>
                 </button>
 
-                <div className="mx-0.5 h-4 w-px bg-border/70" />
-
-                {/* Model Selector */}
-                <div className="relative">
-                  <button
-                    onClick={() => setShowModelSelector(!showModelSelector)}
-                    disabled={!convId || isLoading}
-                    className="inline-flex h-9 max-w-[160px] items-center justify-start gap-2 border-0 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
-                  >
-                    <Cpu className="size-4 shrink-0" />
-                    <span className="truncate">{selectedModel}</span>
-                  </button>
-
-                  {/* Model Dropdown */}
-                  {showModelSelector && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setShowModelSelector(false)}
-                      />
-                      <div className="absolute bottom-full left-0 mb-1 w-64 bg-background border border-border rounded-lg shadow-lg z-50 py-1">
-                        <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b border-border">
-                          Select model
-                        </div>
-                        <div className="max-h-64 overflow-y-auto">
-                          {models.map((model) => {
-                            const isSelected = model.id === selectedModel
-                            return (
-                              <button
-                                key={model.id}
-                                onClick={() => {
-                                  setSelectedModel(model.id)
-                                  setShowModelSelector(false)
-                                }}
-                                className={clsx(
-                                  'w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-secondary/60 transition-colors',
-                                  isSelected && 'bg-primary/10 text-primary'
-                                )}
-                              >
-                                {isSelected ? (
-                                  <Check className="size-4" />
-                                ) : (
-                                  <span className="size-4" />
-                                )}
-                                <span className="flex-1 truncate">{model.name}</span>
-                                <span className="shrink-0 text-xs text-muted-foreground">
-                                  {model.provider}
-                                </span>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <div className="mx-0.5 h-4 w-px bg-border/70" />
-
-                {/* Thinking Toggle */}
-                <div className="flex h-9 items-center gap-2 rounded-md px-2">
-                  <span className="text-xs text-muted-foreground">Thinking</span>
-                  <button
-                    onClick={() => setThinkingEnabled(!thinkingEnabled)}
-                    disabled={!convId || isLoading}
-                    className={clsx(
-                      'relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50',
-                      thinkingEnabled ? 'bg-primary' : 'bg-input'
-                    )}
-                    aria-label={thinkingEnabled ? 'Disable thinking' : 'Enable thinking'}
-                  >
-                    <span
-                      className={clsx(
-                        'inline-block h-3.5 w-3.5 transform rounded-full bg-background transition-transform',
-                        thinkingEnabled ? 'translate-x-5' : 'translate-x-1'
-                      )}
+                {/* Model Dropdown */}
+                {showModelSelector && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowModelSelector(false)}
                     />
-                  </button>
-                </div>
-              </div>
-
-              {/* Right Tools */}
-              <div className="flex items-center gap-2">
-                {/* Context Usage Display */}
-                <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground mr-2">
-                  <span>{formatContextUsage()} context</span>
-                </div>
-
-                {isLoading ? (
-                  <button
-                    onClick={() => {}}
-                    className="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
-                    aria-label="Stop generation"
-                  >
-                    <Square className="size-4" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSend}
-                    disabled={!convId || isLoading || (!input.trim() && attachments.length === 0)}
-                    className="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                    aria-label="Submit"
-                  >
-                    <CornerDownLeft className="size-4" />
-                  </button>
+                    <div className="absolute bottom-full left-0 mb-1 w-64 bg-background border border-border rounded-lg shadow-lg z-50 py-1">
+                      <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b border-border">
+                        Select model
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {models.map((model) => {
+                          const isSelected = model.id === selectedModel
+                          return (
+                            <button
+                              key={model.id}
+                              onClick={() => {
+                                setSelectedModel(model.id)
+                                setShowModelSelector(false)
+                              }}
+                              className={clsx(
+                                'w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-secondary/60 transition-colors',
+                                isSelected && 'bg-primary/10 text-primary'
+                              )}
+                            >
+                              {isSelected ? (
+                                <Check className="size-4" />
+                              ) : (
+                                <span className="size-4" />
+                              )}
+                              <span className="flex-1 truncate">{model.name}</span>
+                              <span className="shrink-0 text-xs text-muted-foreground">
+                                {model.provider}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
+
+              <div className="mx-0.5 h-4 w-px bg-border/70" />
+
+              {/* Thinking Toggle */}
+              <div className="flex h-9 items-center gap-2 rounded-md px-2">
+                <span className="text-xs text-muted-foreground">Thinking</span>
+                <button
+                  onClick={() => setThinkingEnabled(!thinkingEnabled)}
+                  disabled={!convId || isLoading}
+                  className={clsx(
+                    'relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50',
+                    thinkingEnabled ? 'bg-primary' : 'bg-input'
+                  )}
+                  aria-label={thinkingEnabled ? 'Disable thinking' : 'Enable thinking'}
+                >
+                  <span
+                    className={clsx(
+                      'inline-block h-3.5 w-3.5 transform rounded-full bg-background transition-transform',
+                      thinkingEnabled ? 'translate-x-5' : 'translate-x-1'
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Right Tools */}
+            <div className="flex items-center gap-2">
+              {/* Context Usage Display */}
+              <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground mr-2">
+                <span>{formatContextUsage()} context</span>
+              </div>
+
+              {isLoading ? (
+                <button
+                  onClick={() => {}}
+                  className="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
+                  aria-label="Stop generation"
+                >
+                  <Square className="size-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={!convId || isLoading || (!input.trim() && attachments.length === 0)}
+                  className="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Submit"
+                >
+                  <CornerDownLeft className="size-4" />
+                </button>
+              )}
             </div>
           </div>
         </div>
