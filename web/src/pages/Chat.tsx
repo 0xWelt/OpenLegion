@@ -41,16 +41,19 @@ import {
 // Part types for streaming assistant messages
 type MessagePart =
   | { type: 'thinking'; content: string; isActive?: boolean }
-  | { type: 'tool_call'; tool_name: string; arguments?: Record<string, unknown>; isActive?: boolean }
+  | { type: 'tool_call'; tool_name: string; tool_call_id?: string; arguments?: string | Record<string, unknown>; isActive?: boolean }
   | { type: 'tool_result'; tool_call_id?: string; output: string }
   | { type: 'text'; content: string }
 
 interface Message {
   id: string
-  role: 'user' | 'assistant' | 'error' | 'approval'
+  role: 'user' | 'assistant' | 'error' | 'approval' | 'tool_result'
   content: string
   // For streaming assistant messages, track parts in order
   parts?: MessagePart[]
+  // For role === 'tool_result'
+  tool_call_id?: string
+  output?: string
 }
 
 interface UploadedFile {
@@ -505,6 +508,19 @@ const AssistantMessage = memo(({
           }
 
           if (part.type === 'tool_call') {
+            // Format arguments for display based on type
+            let argsDisplay: string
+            if (part.arguments === undefined || part.arguments === null) {
+              argsDisplay = 'No arguments'
+            } else if (typeof part.arguments === 'string') {
+              // Empty string is valid - tool might have no args, or still streaming
+              argsDisplay = part.arguments.trim() || '(no arguments)'
+            } else {
+              argsDisplay = Object.keys(part.arguments).length > 0
+                ? JSON.stringify(part.arguments, null, 2)
+                : '(no arguments)'
+            }
+            const toolCallStreaming = isStreaming && isLastPart && part.isActive
             return (
               <div key={blockId}>
                 <button
@@ -512,15 +528,22 @@ const AssistantMessage = memo(({
                   className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 transition-colors"
                 >
                   {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <Wrench className="w-3.5 h-3.5" />
-                  <span>Using {part.tool_name}</span>
+                  {toolCallStreaming ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Calling ({part.tool_call_id ? formatToolCallIdDisplay(part.tool_call_id) : part.tool_name})...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>Calling ({part.tool_call_id ? formatToolCallIdDisplay(part.tool_call_id) : part.tool_name})</span>
+                    </>
+                  )}
                 </button>
                 {isExpanded && (
                   <div className="mt-2 pl-6 border-l-2 border-blue-300 dark:border-blue-700/50">
                     <pre className="text-xs text-blue-700 dark:text-blue-400/80 whitespace-pre-wrap font-mono bg-blue-50/50 dark:bg-blue-900/20 p-2 rounded">
-                      {part.arguments && Object.keys(part.arguments).length > 0
-                        ? JSON.stringify(part.arguments, null, 2)
-                        : 'No arguments'}
+                      {argsDisplay}
                     </pre>
                   </div>
                 )}
@@ -556,12 +579,79 @@ const AssistantMessage = memo(({
 
           return null
         })}
+        {/* Waiting for tool result: last part is completed tool_call, result not yet received */}
+        {isStreaming && parts?.length && (() => {
+          const last = parts[parts.length - 1]
+          if (last.type === 'tool_call' && !last.isActive) {
+            const label = last.tool_call_id ? `Executing (${formatToolCallIdDisplay(last.tool_call_id)})` : 'Executing'
+            return (
+              <div key={`${messageId}-result-loading`} className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                <span>{label}</span>
+              </div>
+            )
+          }
+          return null
+        })()}
       </div>
     </div>
   )
 })
 
 
+
+// Display tool_call_id with space after colon (e.g. Shell:8 -> Shell: 8)
+function formatToolCallIdDisplay(id: string): string {
+  return id.replace(/:(?=\d)/, ': ')
+}
+
+// Normalize tool result output to string (history uses string; live may receive string or object)
+function formatToolResultOutput(value: string | Record<string, unknown> | null | undefined): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'object') return JSON.stringify(value, null, 2)
+  return String(value)
+}
+
+// Tool result as standalone message (same format for both history and live chat)
+const ToolResultMessage = memo(({
+  messageId,
+  toolCallId,
+  output,
+  expandedBlocks,
+  onToggleBlock
+}: {
+  messageId: string
+  toolCallId?: string
+  output: string | Record<string, unknown>
+  expandedBlocks: Set<string>
+  onToggleBlock: (id: string) => void
+}) => {
+  const blockId = `${messageId}-result`
+  const isExpanded = expandedBlocks.has(blockId)
+  const outputStr = formatToolResultOutput(output)
+  return (
+    <div className="flex justify-start w-full">
+      <div className="w-full">
+        <button
+          onClick={() => onToggleBlock(blockId)}
+          className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors"
+        >
+          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          <span>Result{toolCallId ? ` (${formatToolCallIdDisplay(toolCallId)})` : ''}</span>
+        </button>
+        {isExpanded && (
+          <div className="mt-2 pl-6 border-l-2 border-emerald-300 dark:border-emerald-700/50">
+            <div className="text-xs text-emerald-700 dark:text-emerald-400/80 whitespace-pre-wrap font-mono leading-relaxed">
+              {outputStr}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+})
 
 // Error message
 const ErrorMessage = memo(({ content }: { content: string }) => (
@@ -625,6 +715,57 @@ export default function Chat() {
   const wsRef = useRef<WebSocket | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const scrollRestoredForConvRef = useRef<Set<string>>(new Set())
+  const scrollSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const SCROLL_STORAGE_KEY = (id: string) => `chat-scroll-${id}`
+
+  // Persist scroll position so hot reload doesn't jump to top
+  const saveScrollPosition = useCallback(() => {
+    const container = messagesContainerRef.current
+    const id = searchParams.get('id')
+    if (!container || !id) return
+    const key = SCROLL_STORAGE_KEY(id)
+    sessionStorage.setItem(key, String(container.scrollTop))
+  }, [searchParams])
+
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+    const onScroll = () => {
+      if (scrollSaveTimeoutRef.current) clearTimeout(scrollSaveTimeoutRef.current)
+      scrollSaveTimeoutRef.current = setTimeout(saveScrollPosition, 150)
+    }
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      container.removeEventListener('scroll', onScroll)
+      if (scrollSaveTimeoutRef.current) clearTimeout(scrollSaveTimeoutRef.current)
+    }
+  }, [saveScrollPosition, convId])
+
+  // When switching conversation, allow restore again for the new conv
+  useEffect(() => {
+    scrollRestoredForConvRef.current.clear()
+  }, [convId])
+
+  // Restore scroll position after mount (e.g. after HMR) so we don't jump to top
+  useEffect(() => {
+    if (!convId || messages.length === 0) return
+    if (scrollRestoredForConvRef.current.has(convId)) return
+    const saved = sessionStorage.getItem(SCROLL_STORAGE_KEY(convId))
+    if (saved === null) return
+    scrollRestoredForConvRef.current.add(convId)
+    const container = messagesContainerRef.current
+    if (!container) return
+    const value = parseInt(saved, 10)
+    if (Number.isNaN(value)) return
+    const restore = () => {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = value
+      }
+    }
+    requestAnimationFrame(restore)
+  }, [convId, messages.length])
 
   // Smart scroll - only scroll if user is near bottom
   const scrollToBottom = useCallback(() => {
@@ -714,28 +855,43 @@ export default function Chat() {
             }
             historyMessages.push({ id: baseId, role: 'user', content: msg.content })
           } else if (msg.type === 'assistant') {
-            // Start building assistant message with parts
+            if (currentAssistantMsg) {
+              historyMessages.push(currentAssistantMsg)
+              currentAssistantMsg = null
+            }
+            // Order: thinking → text → tool_call (tool_result is a separate message)
             const parts: NonNullable<Message['parts']> = []
             if (msg.thinking) {
               parts.push({ type: 'thinking', content: msg.thinking })
             }
-            // Add tool_calls if present
+            if (msg.content?.trim()) {
+              parts.push({ type: 'text', content: msg.content })
+            }
             if (msg.tool_calls && msg.tool_calls.length > 0) {
               for (const tc of msg.tool_calls) {
-                parts.push({ type: 'tool_call', tool_name: tc.tool_name, arguments: tc.arguments })
+                parts.push({
+                  type: 'tool_call',
+                  tool_name: tc.tool_name,
+                  tool_call_id: tc.tool_call_id,
+                  arguments: tc.arguments
+                })
               }
             }
             currentAssistantMsg = {
               id: baseId,
               role: 'assistant',
               content: msg.content,
-              parts: [...parts, { type: 'text', content: msg.content }]
+              parts
             }
-          } else if (msg.type === 'tool_result' && currentAssistantMsg) {
-            // Add tool result to current assistant message
-            currentAssistantMsg.parts = currentAssistantMsg.parts || []
-            currentAssistantMsg.parts.push({
-              type: 'tool_result',
+          } else if (msg.type === 'tool_result') {
+            if (currentAssistantMsg) {
+              historyMessages.push(currentAssistantMsg)
+              currentAssistantMsg = null
+            }
+            historyMessages.push({
+              id: baseId,
+              role: 'tool_result',
+              content: '',
               tool_call_id: msg.tool_call_id,
               output: msg.output
             })
@@ -857,25 +1013,94 @@ export default function Chat() {
           )
           break
 
-        case 'tool_call':
-          // Mark previous tool_call as inactive and add new one
+        case 'tool_call': {
+          // Backend sends: type tool_call with arguments_raw (string); may be start of stream
+          const initialArgs = data.arguments_raw ?? data.arguments ?? ''
           updateStreamingMessage(
             (parts) => {
-              // Mark all previous tool_call as inactive
-              const updatedParts = parts.map(p =>
-                p.type === 'tool_call' ? { ...p, isActive: false } : p
-              )
-              return [...updatedParts, { type: 'tool_call', tool_name: data.tool_name, arguments: data.arguments, isActive: true }]
+              const lastPart = parts[parts.length - 1]
+              if (lastPart?.type === 'tool_call' && lastPart.isActive && typeof lastPart.arguments === 'string' && typeof initialArgs === 'string') {
+                return [...parts.slice(0, -1), { ...lastPart, arguments: lastPart.arguments + initialArgs }]
+              }
+              if (typeof data.arguments === 'object' && data.arguments !== null) {
+                const updatedParts = parts.map(p =>
+                  p.type === 'tool_call' && p.isActive ? { ...p, arguments: data.arguments, isActive: false } : p
+                )
+                return updatedParts
+              }
+              return [...parts, { type: 'tool_call', tool_name: data.tool_name ?? 'unknown', tool_call_id: data.tool_call_id, arguments: initialArgs, isActive: true }]
             },
-            { type: 'tool_call', tool_name: data.tool_name, arguments: data.arguments, isActive: true }
+            { type: 'tool_call', tool_name: data.tool_name ?? 'unknown', tool_call_id: data.tool_call_id, arguments: initialArgs, isActive: true }
           )
+          break
+        }
+
+        case 'tool_call_chunk':
+          // Append chunk to active tool_call arguments string
+          updateStreamingMessage((parts) => {
+            const lastPart = parts[parts.length - 1]
+            if (lastPart?.type === 'tool_call' && lastPart.isActive) {
+              const current = typeof lastPart.arguments === 'string' ? lastPart.arguments : ''
+              return [...parts.slice(0, -1), { ...lastPart, arguments: current + (data.content ?? '') }]
+            }
+            return parts
+          })
           break
 
-        case 'tool_result':
-          updateStreamingMessage(
-            (parts) => [...parts, { type: 'tool_result', tool_call_id: data.tool_call_id, output: data.output }]
-          )
+        case 'tool_call_complete':
+          // Stream ended; frontend parses accumulated string arguments to JSON
+          updateStreamingMessage((parts) => {
+            return parts.map(p => {
+              if (p.type === 'tool_call' && p.isActive && typeof p.arguments === 'string') {
+                try {
+                  const parsed = JSON.parse(p.arguments)
+                  return { ...p, arguments: parsed, isActive: false }
+                } catch {
+                  // Parsing failed, keep as string
+                  return { ...p, isActive: false }
+                }
+              }
+              return { ...p, isActive: false }
+            })
+          })
           break
+
+        case 'tool_result': {
+          // Insert tool_result right after the assistant message that contains this tool_call_id,
+          // so order stays Calling (Shell: N) → Result (Shell: N) even when results arrive out of order.
+          const newId = `msg-${Date.now()}`
+          const newMsg: Message = {
+            id: newId,
+            role: 'tool_result',
+            content: '',
+            tool_call_id: data.tool_call_id,
+            output: data.output ?? ''
+          }
+          const toolCallId = data.tool_call_id
+          setMessages((prev) => {
+            let insertIndex = prev.length
+            for (let i = 0; i < prev.length; i++) {
+              const msg = prev[i]
+              if (msg.role === 'assistant' && msg.parts) {
+                const hasMatch = msg.parts.some(
+                  (p) => p.type === 'tool_call' && p.tool_call_id === toolCallId
+                )
+                if (hasMatch) {
+                  insertIndex = i + 1
+                  break
+                }
+              }
+            }
+            return [
+              ...prev.slice(0, insertIndex),
+              newMsg,
+              ...prev.slice(insertIndex)
+            ]
+          })
+          // Next chunk/think/tool_call belongs to a new assistant turn
+          streamingMsgIdRef.current = null
+          break
+        }
 
         case 'complete':
         case 'assistant':
@@ -886,15 +1111,39 @@ export default function Chat() {
               const msgIndex = prev.findIndex(m => m.id === streamingId)
               if (msgIndex >= 0) {
                 const msg = prev[msgIndex]
-                // Mark all parts as inactive
-                const finalParts: MessagePart[] = msg.parts?.map(p => ({
-                  ...p,
-                  isActive: false
-                })) || []
+                // If backend sent complete tool_calls, use them to update existing parts
+                const backendToolCalls = data.tool_calls as Array<{tool_name: string; arguments: Record<string, unknown>}> | undefined
+                let partsWithToolCalls = msg.parts || []
+
+                if (backendToolCalls && backendToolCalls.length > 0) {
+                  // Update existing tool_call parts with backend data
+                  let toolCallIndex = 0
+                  partsWithToolCalls = partsWithToolCalls.map(p => {
+                    if (p.type === 'tool_call' && toolCallIndex < backendToolCalls.length) {
+                      const backendTc = backendToolCalls[toolCallIndex++]
+                      return { ...p, tool_name: backendTc.tool_name, arguments: backendTc.arguments, isActive: false }
+                    }
+                    return { ...p, isActive: false }
+                  })
+                } else {
+                  // No backend tool_calls, just mark inactive and try to parse string args
+                  partsWithToolCalls = partsWithToolCalls.map(p => {
+                    if (p.type === 'tool_call' && typeof p.arguments === 'string') {
+                      try {
+                        const parsed = JSON.parse(p.arguments)
+                        return { ...p, arguments: parsed, isActive: false }
+                      } catch {
+                        return { ...p, isActive: false }
+                      }
+                    }
+                    return { ...p, isActive: false }
+                  })
+                }
+
                 // If backend sent full content, add it as final text part
-                let partsWithContent = finalParts
+                let partsWithContent = partsWithToolCalls
                 if (data.content) {
-                  partsWithContent = [...finalParts, { type: 'text', content: data.content }]
+                  partsWithContent = [...partsWithToolCalls, { type: 'text', content: data.content }]
                 }
                 const updated = [...prev]
                 updated[msgIndex] = { ...msg, id: `msg-${Date.now()}`, parts: partsWithContent }
@@ -1111,6 +1360,17 @@ export default function Chat() {
           return <ErrorMessage key={msg.id} content={msg.content} />
         case 'approval':
           return <ApprovalMessage key={msg.id} content={msg.content} />
+        case 'tool_result':
+          return (
+            <ToolResultMessage
+              key={msg.id}
+              messageId={msg.id}
+              toolCallId={msg.tool_call_id}
+              output={msg.output ?? ''}
+              expandedBlocks={expandedBlocks}
+              onToggleBlock={toggleBlock}
+            />
+          )
         default:
           return null
       }

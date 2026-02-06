@@ -11,6 +11,7 @@ import tomlkit
 from fastapi import APIRouter, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
 from kimi_agent_sdk import ApprovalRequest, ToolResult, WireMessage
+from kimi_cli.soul.message import tool_result_to_message
 from kimi_cli.wire.types import StatusUpdate
 from kosong.message import ContentPart, ImageURLPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from loguru import logger
@@ -381,7 +382,13 @@ async def _process_wire_message(
                 )
     elif isinstance(wire_msg, ToolResult):
         await _flush_pending_tool_call(pending_tool_call, websocket)
-        output: str = str(wire_msg.output) if hasattr(wire_msg, 'output') else str(wire_msg)
+        # Use same "full tool message" as context: tool_result_to_message builds role=tool Message
+        # that kimi-cli appends to context; we serialize its content so frontend = what model sees
+        msg = tool_result_to_message(wire_msg)
+        output_parts = [
+            part.text if isinstance(part, TextPart) else str(part) for part in msg.content
+        ]
+        output = '\n'.join(output_parts)
         logger.debug(f'Tool result: {output[:50]}...')
         await websocket.send_json(
             {

@@ -312,6 +312,7 @@ class TestConversationHistory:
         assert len(result.tool_calls) == 1
         assert result.tool_calls[0].tool_name == 'Shell'
         assert result.tool_calls[0].arguments == {'command': 'ls -la'}
+        assert result.tool_calls[0].tool_call_id == 'Shell:0'
 
     def test_process_context_record_tool_with_list_content(self) -> None:
         """Test processing tool record with list content (text parts)."""
@@ -338,6 +339,60 @@ class TestConversationHistory:
         result = self.manager._process_context_record(data)
 
         assert result is None
+
+
+@pytest.mark.anyio
+async def test_get_conversation_history_includes_tool_and_tool_result(
+    tmp_path: Path,
+) -> None:
+    """Load history from context.jsonl returns user, assistant with tool_calls, and tool_result."""
+    conv_file = tmp_path / 'conversations.json'
+    conv_file.write_text('{"conversations":[]}')
+    context_path = tmp_path / 'context.jsonl'
+    lines = [
+        '{"role":"user","content":"Run pwd"}',
+        '{"role":"assistant","content":[{"type":"think","think":"I will run pwd"}],"tool_calls":[{"type":"function","id":"Shell:0","function":{"name":"Shell","arguments":"{\\"command\\":\\"pwd\\"}"}}]}',
+        '{"role":"tool","content":"/Users/dh/.legion/workdirs/abc","tool_call_id":"Shell:0"}',
+    ]
+    context_path.write_text('\n'.join(lines))
+
+    with patch('legion.conversations.CONVERSATIONS_FILE', conv_file):
+        manager = ConversationManager()
+        manager._conversations.clear()
+        conv = Conversation(
+            id='hist1',
+            title='History',
+            session_id='legion-conv-hist1',
+            work_dir=str(tmp_path),
+            created_at='2024-01-01T00:00:00',
+            updated_at='2024-01-01T01:00:00',
+            message_count=3,
+        )
+        manager._conversations[conv.id] = conv
+
+        def return_context_path(c: Conversation) -> Path | None:
+            if c.id == conv.id:
+                return context_path
+            return None
+
+        with patch.object(
+            ConversationManager,
+            '_get_context_file_path',
+            side_effect=return_context_path,
+        ):
+            messages = await manager.get_conversation_history(conv.id)
+
+    assert len(messages) == 3
+    assert isinstance(messages[0], UIMessageUser)
+    assert messages[0].content == 'Run pwd'
+    assert isinstance(messages[1], UIMessageAssistant)
+    assert messages[1].tool_calls
+    assert messages[1].tool_calls[0].tool_name == 'Shell'
+    assert messages[1].tool_calls[0].arguments == {'command': 'pwd'}
+    assert messages[1].tool_calls[0].tool_call_id == 'Shell:0'
+    assert isinstance(messages[2], UIMessageToolResult)
+    assert messages[2].tool_call_id == 'Shell:0'
+    assert '/Users/dh/.legion/workdirs/abc' in messages[2].output
 
 
 class TestGlobalConversationManager:

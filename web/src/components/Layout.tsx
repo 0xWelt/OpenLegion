@@ -1,10 +1,12 @@
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { useState } from 'react'
 import Sidebar from './Sidebar'
 import Header from './Header'
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const location = useLocation()
+  const isChatPage = location.pathname.startsWith('/chat')
 
   return (
     <div className="flex h-screen bg-oc-bg text-oc-text overflow-hidden">
@@ -19,7 +21,7 @@ export default function Layout() {
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         />
-        <main className="flex-1 min-w-0 overflow-hidden">
+        <main className={`flex-1 min-w-0 overflow-hidden ${isChatPage ? '' : 'p-6'}`}>
           <Outlet />
         </main>
       </div>

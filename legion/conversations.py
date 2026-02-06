@@ -7,13 +7,17 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from hashlib import md5
 from pathlib import Path
 from typing import Any, Literal, TypeGuard
 
 import aiofiles
+from kaos import get_current_kaos
+from kaos.local import local_kaos
 from kaos.path import KaosPath
 from kimi_agent_sdk import Session
 from kimi_cli.metadata import load_metadata
+from kimi_cli.share import get_share_dir
 from kosong.message import (
     ContentPart,
     Message,
@@ -81,6 +85,8 @@ class ToolCallInfo(BaseModel):
     """Name of the tool."""
     arguments: dict[str, Any] | str
     """Tool arguments."""
+    tool_call_id: str = ''
+    """ID linking this call to its tool result (e.g. Shell:0)."""
 
 
 class UIMessageAssistant(BaseModel):
@@ -334,13 +340,26 @@ class ConversationManager:
         self._sessions.clear()
 
     def _get_context_file_path(self, conv: Conversation) -> Path | None:
-        """Get the path to the context.jsonl file for a conversation."""
-        work_dir = KaosPath(conv.work_dir)
+        """Get the path to the context.jsonl file for a conversation.
+
+        Uses metadata when available; falls back to same path formula as kimi-cli
+        (get_share_dir() / "sessions" / <md5(work_dir)> / session_id / context.jsonl)
+        so history loads even if metadata was cleared or path was stored in canonical form.
+        """
+        work_dir = KaosPath(conv.work_dir).canonical()
         metadata = load_metadata()
         work_dir_meta = metadata.get_work_dir_meta(work_dir)
-        if work_dir_meta is None:
-            return None
-        context_file = work_dir_meta.sessions_dir / conv.session_id / 'context.jsonl'
+        if work_dir_meta is not None:
+            context_file = work_dir_meta.sessions_dir / conv.session_id / 'context.jsonl'
+            if context_file.exists():
+                return context_file
+        # Fallback: compute sessions dir same as kimi_cli.metadata.WorkDirMeta.sessions_dir
+        path_str = str(work_dir)
+        path_md5 = md5(path_str.encode(encoding='utf-8')).hexdigest()
+        kaos_name = get_current_kaos().name
+        dir_basename = path_md5 if kaos_name == local_kaos.name else f'{kaos_name}_{path_md5}'
+        fallback_dir = get_share_dir() / 'sessions' / dir_basename
+        context_file = fallback_dir / conv.session_id / 'context.jsonl'
         if context_file.exists():
             return context_file
         return None
@@ -365,6 +384,7 @@ class ConversationManager:
                     arguments=part.function.arguments
                     if hasattr(part.function, 'arguments') and part.function.arguments is not None
                     else {},
+                    tool_call_id=getattr(part, 'id', None) or '',
                 )
                 for part in content
                 if isinstance(part, ToolCall)
@@ -396,7 +416,13 @@ class ConversationManager:
             args: dict[str, Any] | str = tc.function.arguments or '{}'
             if isinstance(args, str):
                 args = json.loads(args)
-            tool_calls.append(ToolCallInfo(tool_name=tc.function.name, arguments=args))
+            tool_calls.append(
+                ToolCallInfo(
+                    tool_name=tc.function.name,
+                    arguments=args,
+                    tool_call_id=getattr(tc, 'id', None) or '',
+                )
+            )
         return UIMessageAssistant(content=text, thinking=thinking, tool_calls=tool_calls)
 
     def _process_tool_record(self, data: Message) -> UIMessageToolResult:

@@ -613,6 +613,9 @@ class TestProcessWireMessage:
         call_args = mock_ws.send_json.call_args[0][0]
         assert call_args['type'] == 'tool_result'
         assert call_args['tool_call_id'] == 'call_123'
+        # Same as context: full message from tool_result_to_message (system(message) + output)
+        assert '<system>Success</system>' in call_args['output']
+        assert 'Result output' in call_args['output']
 
     @pytest.mark.anyio
     async def test_process_approval_request(self) -> None:
