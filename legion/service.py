@@ -9,17 +9,39 @@ import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
 
 import psutil
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+from pydantic import BaseModel
 from rich.console import Console
 from rich.table import Table
 
 from legion.chat_router import router as chat_router
 from legion.conversations import conversation_manager
+
+
+class StatusResponse(BaseModel):
+    """GET /api/status response."""
+
+    status: str
+    """Service status string."""
+    version: str
+    """API version."""
+    timestamp: float
+    """Current time from event loop."""
+
+
+class RootResponse(BaseModel):
+    """GET / when static files not built."""
+
+    message: str
+    """Short API message."""
+    version: str
+    """API version."""
+    note: str
+    """Note about building the web UI."""
 
 
 console = Console()
@@ -183,12 +205,12 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
 
     @app.get('/api/status')
-    async def get_status() -> dict[str, Any]:
-        return {
-            'status': 'running',
-            'version': '0.1.0',
-            'timestamp': asyncio.get_event_loop().time(),
-        }
+    async def get_status() -> StatusResponse:
+        return StatusResponse(
+            status='running',
+            version='0.1.0',
+            timestamp=asyncio.get_event_loop().time(),
+        )
 
     @app.websocket('/ws')
     async def websocket_endpoint(websocket: WebSocket):
@@ -213,11 +235,11 @@ def create_app() -> FastAPI:
     else:
 
         @app.get('/')
-        async def root() -> dict[str, str]:
-            return {
-                'message': 'Legion API Server',
-                'version': '0.1.0',
-                'note': 'Web UI not built. Run: python scripts/build_web.py',
-            }
+        async def root() -> RootResponse:
+            return RootResponse(
+                message='Legion API Server',
+                version='0.1.0',
+                note='Web UI not built. Run: python scripts/build_web.py',
+            )
 
     return app

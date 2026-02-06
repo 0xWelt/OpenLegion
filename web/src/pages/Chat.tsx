@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, memo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import {
   Check,
   Paperclip,
@@ -14,25 +21,36 @@ import {
   AlertCircle,
   Cpu,
   Search,
-  Info,
   ChevronsDownUp,
   ChevronsUpDown,
   Square,
   CornerDownLeft,
   MessageSquare,
-  Plus
+  Plus,
+  Copy,
+
+
+  Sparkles,
+  Bot
 } from 'lucide-react'
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+// Part types for streaming assistant messages
+type MessagePart =
+  | { type: 'thinking'; content: string; isActive?: boolean }
+  | { type: 'tool_call'; tool_name: string; arguments?: Record<string, unknown>; isActive?: boolean }
+  | { type: 'tool_result'; tool_call_id?: string; output: string }
+  | { type: 'text'; content: string }
 
 interface Message {
   id: string
-  role: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'error' | 'approval'
+  role: 'user' | 'assistant' | 'error' | 'approval'
   content: string
-  metadata?: {
-    tool_name?: string
-    arguments?: Record<string, unknown>
-    tool_call_id?: string
-    output?: string
-  }
+  // For streaming assistant messages, track parts in order
+  parts?: MessagePart[]
 }
 
 interface UploadedFile {
@@ -50,53 +68,577 @@ interface Attachment {
   uploadedUrl?: string
 }
 
-const models = [
-  { id: 'kimi-k2-0711-preview', name: 'Kimi K2 Preview', provider: 'Moonshot' },
-  { id: 'kimi-k2-0711', name: 'Kimi K2', provider: 'Moonshot' },
-  { id: 'kimi-latest', name: 'Kimi Latest', provider: 'Moonshot' }
-]
+interface Model {
+  id: string
+  name: string
+  provider: string
+  description?: string
+  capabilities?: string[]
+}
+
+interface KimiConfig {
+  default_model: string
+  default_thinking: boolean
+  models: Record<string, {
+    provider: string
+    model?: string
+    max_context_size?: number
+    capabilities?: string[]
+  }>
+  providers: Record<string, {
+    type: string
+    base_url?: string
+  }>
+}
+
+// =============================================================================
+// UTILITIES
+// =============================================================================
+
+const formatDuration = (ms: number): string => {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  return `${(ms / 60000).toFixed(1)}m`
+}
+
+// =============================================================================
+// COMPONENTS
+// =============================================================================
+
+// Hook to detect dark mode changes
+const useDarkMode = () => {
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'))
+
+  useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          setIsDark(document.documentElement.classList.contains('dark'))
+        }
+      })
+    })
+
+    observer.observe(document.documentElement, { attributes: true })
+    return () => observer.disconnect()
+  }, [])
+
+  return isDark
+}
+
+// Code block with copy button in top-right corner
+const CodeBlock = memo(({ code, language }: { code: string; language?: string }) => {
+  const [copied, setCopied] = useState(false)
+  const isDark = useDarkMode()
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="relative group my-2">
+      <button
+        onClick={handleCopy}
+        className="absolute top-2 right-2 z-10 p-1.5 rounded bg-black/20 hover:bg-black/30 dark:bg-white/10 dark:hover:bg-white/20 transition-colors opacity-0 group-hover:opacity-100"
+        title="Copy code"
+      >
+        {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-white/70" />}
+      </button>
+      <div className="rounded-lg overflow-hidden border border-border">
+        <SyntaxHighlighter
+          language={language || 'text'}
+          style={isDark ? oneDark : oneLight}
+          customStyle={{ margin: 0, borderRadius: 0, fontSize: '0.875rem' }}
+          showLineNumbers
+        >
+          {code}
+        </SyntaxHighlighter>
+      </div>
+    </div>
+  )
+})
+
+// Markdown renderer with math support
+const MarkdownContent = memo(({ content }: { content: string }) => {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={{
+        code({ node, inline, className, children, ...props }: any) {
+          const match = /language-(\w+)/.exec(className || '')
+          const code = String(children).replace(/\n$/, '')
+
+          // Check if this is inline code:
+          // 1. explicit inline flag from react-markdown
+          // 2. no language class (inline code doesn't have language-xxx class)
+          // 3. no newlines in content
+          const isInline = inline || (!match && !code.includes('\n'))
+
+          if (isInline) {
+            return (
+              <code
+                className="px-1.5 py-0.5 rounded font-mono text-sm bg-oc-surface text-oc-text border border-oc-border"
+                {...props}
+              >
+                {children}
+              </code>
+            )
+          }
+
+          return <CodeBlock code={code} language={match?.[1]} />
+        },
+        pre({ children }) {
+          return <>{children}</>
+        },
+        p({ children }) {
+          return <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>
+        },
+        ul({ children }) {
+          return <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>
+        },
+        ol({ children }) {
+          return <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>
+        },
+        li({ children }) {
+          return <li className="leading-relaxed">{children}</li>
+        },
+        h1({ children }) {
+          return <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>
+        },
+        h2({ children }) {
+          return <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>
+        },
+        h3({ children }) {
+          return <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>
+        },
+        blockquote({ children }) {
+          return (
+            <blockquote className="border-l-2 border-primary pl-4 italic text-muted-foreground my-4">
+              {children}
+            </blockquote>
+          )
+        },
+        table({ children }) {
+          return (
+            <div className="overflow-x-auto my-4">
+              <table className="w-full border-collapse border border-border">
+                {children}
+              </table>
+            </div>
+          )
+        },
+        thead({ children }) {
+          return <thead className="bg-muted">{children}</thead>
+        },
+        th({ children }) {
+          return (
+            <th className="border border-border px-3 py-2 text-left font-semibold text-sm">
+              {children}
+            </th>
+          )
+        },
+        td({ children }) {
+          return (
+            <td className="border border-border px-3 py-2 text-sm">
+              {children}
+            </td>
+          )
+        },
+        a({ href, children }) {
+          return (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              {children}
+            </a>
+          )
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  )
+})
+
+// Attachment preview
+const AttachmentPreview = memo(({ attachment, onRemove }: { attachment: Attachment; onRemove: () => void }) => {
+  return (
+    <div className="group relative flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border bg-muted/50 text-xs">
+      {attachment.type === 'image' ? (
+        <div className="relative">
+          <img src={attachment.url} alt="" className="w-8 h-8 rounded object-cover" />
+        </div>
+      ) : (
+        <Paperclip className="w-4 h-4 text-muted-foreground" />
+      )}
+      <span className="truncate max-w-[120px] text-muted-foreground">{attachment.filename}</span>
+      <button
+        onClick={onRemove}
+        className="p-0.5 rounded-full hover:bg-muted transition-colors"
+      >
+        <X className="w-3 h-3 text-muted-foreground" />
+      </button>
+    </div>
+  )
+})
+
+// Model Selector Modal - Centered modal like kimi-cli
+const ModelSelectorModal = memo(({
+  isOpen,
+  onClose,
+  models,
+  selectedModel,
+  onSelect
+}: {
+  isOpen: boolean
+  onClose: () => void
+  models: Model[]
+  selectedModel: string
+  onSelect: (modelId: string) => void
+}) => {
+  const [searchQuery, setSearchQuery] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Focus input when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => inputRef.current?.focus(), 100)
+    }
+  }, [isOpen])
+
+  // Close on escape
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape)
+      return () => document.removeEventListener('keydown', handleEscape)
+    }
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  const filteredModels = searchQuery
+    ? models.filter(m =>
+        m.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        m.provider.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : models
+
+  // Group models by provider
+  const groupedModels = filteredModels.reduce((acc, model) => {
+    const provider = model.provider
+    if (!acc[provider]) acc[provider] = []
+    acc[provider].push(model)
+    return acc
+  }, {} as Record<string, Model[]>)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-2xl max-h-[80vh] flex flex-col bg-background rounded-xl border border-border shadow-2xl overflow-hidden">
+        {/* Header with search */}
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Select Model</h2>
+            <button
+              onClick={onClose}
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search models..."
+              className="w-full pl-10 pr-4 py-2 bg-muted rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+          </div>
+        </div>
+
+        {/* Model list */}
+        <div className="flex-1 overflow-y-auto p-2">
+          {Object.entries(groupedModels).map(([provider, providerModels]) => (
+            <div key={provider} className="mb-4">
+              <div className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                {provider}
+              </div>
+              <div className="space-y-1">
+                {providerModels.map((model) => (
+                  <button
+                    key={model.id}
+                    onClick={() => {
+                      onSelect(model.id)
+                      onClose()
+                    }}
+                    className={clsx(
+                      'w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors',
+                      selectedModel === model.id
+                        ? 'bg-primary/10 border border-primary/20'
+                        : 'hover:bg-muted border border-transparent'
+                    )}
+                  >
+                    <div className="flex-shrink-0">
+                      {selectedModel === model.id ? (
+                        <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                          <Check className="w-3 h-3 text-primary-foreground" />
+                        </div>
+                      ) : (
+                        <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{model.name}</span>
+                        {model.capabilities?.includes('thinking') && (
+                          <span className="px-1.5 py-0.5 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded">
+                            thinking
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {model.description || model.id}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {filteredModels.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              No models found matching "{searchQuery}"
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-3 border-t border-border bg-muted/30">
+          <div className="text-xs text-muted-foreground text-center">
+            Press <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">ESC</kbd> to close
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// =============================================================================
+// MESSAGE RENDERERS - Aligned with kimi-cli
+// =============================================================================
+
+// User message bubble
+const UserMessage = memo(({ content }: { content: string }) => (
+  <div className="flex justify-end">
+    <div className="max-w-[85%] rounded-2xl bg-primary text-primary-foreground px-4 py-3 text-sm">
+      <div className="whitespace-pre-wrap break-words">{content}</div>
+    </div>
+  </div>
+))
+
+// Assistant message with parts (text, thinking, tool_call, tool_result) in order
+const AssistantMessage = memo(({
+  messageId,
+  parts,
+  isStreaming = false,
+  expandedBlocks,
+  onToggleBlock,
+  thinkingDuration
+}: {
+  messageId: string
+  parts?: MessagePart[]
+  isStreaming?: boolean
+  expandedBlocks: Set<string>
+  onToggleBlock: (id: string) => void
+  thinkingDuration?: number
+}) => {
+  return (
+    <div className="flex justify-start w-full">
+      <div className="w-full space-y-2">
+        {/* Render all parts in order */}
+        {parts?.map((part, index) => {
+          const blockId = `${messageId}-part-${index}`
+          const isExpanded = expandedBlocks.has(blockId)
+          const isLastPart = index === parts.length - 1
+
+          if (part.type === 'thinking') {
+            return (
+              <div key={blockId}>
+                <button
+                  onClick={() => onToggleBlock(blockId)}
+                  className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-400 transition-colors"
+                >
+                  {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  {isStreaming && isLastPart && part.isActive ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Thinking...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Brain className="w-3.5 h-3.5" />
+                      <span>Thinking{thinkingDuration && thinkingDuration > 0 ? ` (${formatDuration(thinkingDuration)})` : ''}</span>
+                    </>
+                  )}
+                </button>
+                {isExpanded && (
+                  <div className="mt-2 pl-6 border-l-2 border-amber-300 dark:border-amber-700/50">
+                    <div className="text-xs text-amber-700 dark:text-amber-400/80 whitespace-pre-wrap font-mono leading-relaxed">
+                      {part.content}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          if (part.type === 'tool_call') {
+            return (
+              <div key={blockId}>
+                <button
+                  onClick={() => onToggleBlock(blockId)}
+                  className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 transition-colors"
+                >
+                  {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  <Wrench className="w-3.5 h-3.5" />
+                  <span>Using {part.tool_name}</span>
+                </button>
+                {isExpanded && (
+                  <div className="mt-2 pl-6 border-l-2 border-blue-300 dark:border-blue-700/50">
+                    <pre className="text-xs text-blue-700 dark:text-blue-400/80 whitespace-pre-wrap font-mono bg-blue-50/50 dark:bg-blue-900/20 p-2 rounded">
+                      {part.arguments && Object.keys(part.arguments).length > 0
+                        ? JSON.stringify(part.arguments, null, 2)
+                        : 'No arguments'}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          if (part.type === 'tool_result') {
+            return (
+              <div key={blockId}>
+                <button
+                  onClick={() => onToggleBlock(blockId)}
+                  className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors"
+                >
+                  {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Result</span>
+                </button>
+                {isExpanded && (
+                  <div className="mt-2 pl-6 border-l-2 border-emerald-300 dark:border-emerald-700/50">
+                    <div className="text-xs text-emerald-700 dark:text-emerald-400/80 whitespace-pre-wrap font-mono leading-relaxed">
+                      {part.output}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          if (part.type === 'text') {
+            return <MarkdownContent key={blockId} content={part.content} />
+          }
+
+          return null
+        })}
+      </div>
+    </div>
+  )
+})
+
+
+
+// Error message
+const ErrorMessage = memo(({ content }: { content: string }) => (
+  <div className="flex justify-start">
+    <div className="max-w-[85%] px-4 py-3 rounded-lg text-sm bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 text-red-800 dark:text-red-300">
+      <div className="flex items-center gap-2 mb-1">
+        <AlertCircle className="w-4 h-4" />
+        <span className="font-medium">Error</span>
+      </div>
+      <div className="whitespace-pre-wrap">{content}</div>
+    </div>
+  </div>
+))
+
+// Approval message
+const ApprovalMessage = memo(({ content }: { content: string }) => (
+  <div className="flex justify-start">
+    <div className="max-w-[85%] px-3 py-2 rounded-lg border border-purple-200 dark:border-purple-800/40 bg-purple-50/30 dark:bg-purple-950/10">
+      <div className="flex items-center gap-2 text-xs font-medium text-purple-700 dark:text-purple-400">
+        <CheckCircle2 className="w-3.5 h-3.5" />
+        <span>{content}</span>
+      </div>
+    </div>
+  </div>
+))
+
+
+
+// =============================================================================
+// MAIN CHAT COMPONENT
+// =============================================================================
 
 export default function Chat() {
   const [searchParams, setSearchParams] = useSearchParams()
   const convId = searchParams.get('id')
 
-  // Messages state
+  // State
   const [messages, setMessages] = useState<Message[]>([])
-  const [streamingContent, setStreamingContent] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-
-  // Input state
   const [input, setInput] = useState('')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // WebSocket state
-  const wsRef = useRef<WebSocket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [statusInfo, setStatusInfo] = useState<{ context_usage: number | null; token_usage: number | null }>({
     context_usage: null,
     token_usage: null
   })
-
-  // UI state
   const [thinkingEnabled, setThinkingEnabled] = useState(false)
-  const [selectedModel, setSelectedModel] = useState('kimi-k2-0711-preview')
+  const [selectedModel, setSelectedModel] = useState('')
   const [showModelSelector, setShowModelSelector] = useState(false)
-  const [expandedThink, setExpandedThink] = useState<Set<string>>(new Set())
-  const [expandedTool, setExpandedTool] = useState<Set<string>>(new Set())
-  const [blocksExpanded, setBlocksExpanded] = useState(false)
+  const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set())
+  const [expandAll, setExpandAll] = useState(false)
+  const [thinkingDuration] = useState<number>(0)
+  const [models, setModels] = useState<Model[]>([])
+  const [configLoaded, setConfigLoaded] = useState(false)
+  // Track the currently streaming assistant message
+  const streamingMsgIdRef = useRef<string | null>(null)
 
+  // Refs
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const wsRef = useRef<WebSocket | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
-  // Scroll to bottom when messages change
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  // Smart scroll - only scroll if user is near bottom
+  const scrollToBottom = useCallback(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+    if (isNearBottom) {
+      container.scrollTop = container.scrollHeight
+    }
+  }, [])
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages, streamingContent])
+  }, [messages, scrollToBottom])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -106,9 +648,49 @@ export default function Chat() {
     }
   }, [input])
 
-  // Load conversation history when convId changes
+  // Load config
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const res = await fetch('/api/conversations/config')
+        const data = await res.json()
+        if (data.config) {
+          const config: KimiConfig = data.config
+          setThinkingEnabled(config.default_thinking)
+
+          // Build model list from config
+          if (config.models && Object.keys(config.models).length > 0) {
+            const configModels: Model[] = Object.entries(config.models).map(([id, model]) => ({
+              id,
+              name: model.model || id,
+              provider: model.provider || 'Unknown',
+              description: model.max_context_size
+                ? `Context: ${model.max_context_size.toLocaleString()}`
+                : undefined,
+              capabilities: model.capabilities
+            }))
+            setModels(configModels)
+
+            // Set default model
+            const defaultModelId = config.default_model
+            const targetModel = configModels.find(m => m.id === defaultModelId) || configModels[0]
+            if (targetModel) {
+              setSelectedModel(targetModel.id)
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load config:', err)
+      } finally {
+        setConfigLoaded(true)
+      }
+    }
+    loadConfig()
+  }, [])
+
+  // Load conversation
   const loadConversation = useCallback(async (id: string) => {
-    setStreamingContent('')
+    streamingMsgIdRef.current = null
     setMessages([])
     setStatusInfo({ context_usage: null, token_usage: null })
     setAttachments([])
@@ -119,41 +701,53 @@ export default function Chat() {
       if (data.messages) {
         const historyMessages: Message[] = []
         let msgIndex = 0
+        let currentAssistantMsg: Message | null = null
+
         for (const msg of data.messages) {
           const baseId = `hist-${msgIndex}`
+
           if (msg.type === 'user') {
-            historyMessages.push({
-              id: baseId,
-              role: 'user',
-              content: msg.content
-            })
+            // Flush any pending assistant message
+            if (currentAssistantMsg) {
+              historyMessages.push(currentAssistantMsg)
+              currentAssistantMsg = null
+            }
+            historyMessages.push({ id: baseId, role: 'user', content: msg.content })
           } else if (msg.type === 'assistant') {
-            historyMessages.push({
+            // Start building assistant message with parts
+            const parts: NonNullable<Message['parts']> = []
+            if (msg.thinking) {
+              parts.push({ type: 'thinking', content: msg.thinking })
+            }
+            // Add tool_calls if present
+            if (msg.tool_calls && msg.tool_calls.length > 0) {
+              for (const tc of msg.tool_calls) {
+                parts.push({ type: 'tool_call', tool_name: tc.tool_name, arguments: tc.arguments })
+              }
+            }
+            currentAssistantMsg = {
               id: baseId,
               role: 'assistant',
-              content: msg.content
-            })
-            // Add thinking if present
-            if (msg.thinking) {
-              historyMessages.push({
-                id: `${baseId}-think`,
-                role: 'thinking',
-                content: msg.thinking
-              })
+              content: msg.content,
+              parts: [...parts, { type: 'text', content: msg.content }]
             }
-          } else if (msg.type === 'tool_result') {
-            historyMessages.push({
-              id: baseId,
-              role: 'tool_result',
-              content: msg.output,
-              metadata: {
-                tool_call_id: msg.tool_call_id,
-                output: msg.output
-              }
+          } else if (msg.type === 'tool_result' && currentAssistantMsg) {
+            // Add tool result to current assistant message
+            currentAssistantMsg.parts = currentAssistantMsg.parts || []
+            currentAssistantMsg.parts.push({
+              type: 'tool_result',
+              tool_call_id: msg.tool_call_id,
+              output: msg.output
             })
           }
           msgIndex++
         }
+
+        // Flush final assistant message
+        if (currentAssistantMsg) {
+          historyMessages.push(currentAssistantMsg)
+        }
+
         setMessages(historyMessages)
       }
     } catch (err) {
@@ -161,13 +755,13 @@ export default function Chat() {
     }
   }, [])
 
-  // Listen for conversation changes from URL
+  // Listen for conversation changes
   useEffect(() => {
     if (convId) {
       loadConversation(convId)
     } else {
       setMessages([])
-      setStreamingContent('')
+      streamingMsgIdRef.current = null
       setStatusInfo({ context_usage: null, token_usage: null })
       setAttachments([])
     }
@@ -176,10 +770,8 @@ export default function Chat() {
   // WebSocket connection
   useEffect(() => {
     if (!convId) {
-      if (wsRef.current) {
-        wsRef.current.close()
-        wsRef.current = null
-      }
+      wsRef.current?.close()
+      wsRef.current = null
       setIsConnected(false)
       return
     }
@@ -187,8 +779,36 @@ export default function Chat() {
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/conversations/ws/${convId}`
     const ws = new WebSocket(wsUrl)
 
-    ws.onopen = () => {
-      setIsConnected(true)
+    ws.onopen = () => setIsConnected(true)
+
+    // Helper to update or create streaming message
+    const updateStreamingMessage = (
+      updateFn: (parts: MessagePart[]) => MessagePart[],
+      createNewPart?: MessagePart
+    ) => {
+      setMessages((prev) => {
+        const streamingId = streamingMsgIdRef.current
+        if (streamingId) {
+          const msgIndex = prev.findIndex(m => m.id === streamingId)
+          if (msgIndex >= 0) {
+            const msg = prev[msgIndex]
+            const currentParts = msg.parts || []
+            const updatedParts = updateFn(currentParts)
+            const updated = [...prev]
+            updated[msgIndex] = { ...msg, parts: updatedParts }
+            return updated
+          }
+        }
+        // Create new streaming message
+        const newId = `streaming-${Date.now()}`
+        streamingMsgIdRef.current = newId
+        return [...prev, {
+          id: newId,
+          role: 'assistant',
+          content: '',
+          parts: createNewPart ? [createNewPart] : []
+        }]
+      })
     }
 
     ws.onmessage = (event) => {
@@ -202,74 +822,99 @@ export default function Chat() {
           })
           break
 
-        case 'text':
-          setStreamingContent((prev) => prev + data.content)
+        case 'chunk':
+          // Append text as a text part
+          updateStreamingMessage(
+            (parts) => {
+              const lastPart = parts[parts.length - 1]
+              if (lastPart?.type === 'text') {
+                // Append to existing text part
+                return [...parts.slice(0, -1), { ...lastPart, content: lastPart.content + data.content }]
+              }
+              // Add new text part
+              return [...parts, { type: 'text', content: data.content }]
+            },
+            { type: 'text', content: data.content }
+          )
           break
 
         case 'think':
-          setMessages((prev) => {
-            const lastMsg = prev[prev.length - 1]
-            if (lastMsg?.role === 'thinking') {
-              return [
-                ...prev.slice(0, -1),
-                { ...lastMsg, content: lastMsg.content + data.content }
-              ]
-            }
-            return [...prev, { id: `think-${Date.now()}`, role: 'thinking', content: data.content }]
-          })
+          // Append to current thinking if active, otherwise create new one
+          updateStreamingMessage(
+            (parts) => {
+              const lastPart = parts[parts.length - 1]
+              if (lastPart?.type === 'thinking' && lastPart.isActive) {
+                // Append to current thinking
+                return [...parts.slice(0, -1), { ...lastPart, content: lastPart.content + data.content }]
+              }
+              // Mark all previous thinking as inactive and add new one
+              const updatedParts = parts.map(p =>
+                p.type === 'thinking' ? { ...p, isActive: false } : p
+              )
+              return [...updatedParts, { type: 'thinking', content: data.content, isActive: true }]
+            },
+            { type: 'thinking', content: data.content, isActive: true }
+          )
           break
 
         case 'tool_call':
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `tool-${Date.now()}`,
-              role: 'tool_call',
-              content: '',
-              metadata: {
-                tool_name: data.tool_name,
-                arguments: data.arguments
-              }
-            }
-          ])
+          // Mark previous tool_call as inactive and add new one
+          updateStreamingMessage(
+            (parts) => {
+              // Mark all previous tool_call as inactive
+              const updatedParts = parts.map(p =>
+                p.type === 'tool_call' ? { ...p, isActive: false } : p
+              )
+              return [...updatedParts, { type: 'tool_call', tool_name: data.tool_name, arguments: data.arguments, isActive: true }]
+            },
+            { type: 'tool_call', tool_name: data.tool_name, arguments: data.arguments, isActive: true }
+          )
           break
 
         case 'tool_result':
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `result-${Date.now()}`,
-              role: 'tool_result',
-              content: data.output,
-              metadata: {
-                tool_call_id: data.tool_call_id,
-                output: data.output
-              }
-            }
-          ])
+          updateStreamingMessage(
+            (parts) => [...parts, { type: 'tool_result', tool_call_id: data.tool_call_id, output: data.output }]
+          )
           break
 
         case 'complete':
-          if (streamingContent) {
-            setMessages((prev) => [
-              ...prev,
-              { id: `msg-${Date.now()}`, role: 'assistant', content: streamingContent }
-            ])
-            setStreamingContent('')
-          }
+        case 'assistant':
+          // Finalize: mark streaming as done and convert parts if needed
+          setMessages((prev) => {
+            const streamingId = streamingMsgIdRef.current
+            if (streamingId) {
+              const msgIndex = prev.findIndex(m => m.id === streamingId)
+              if (msgIndex >= 0) {
+                const msg = prev[msgIndex]
+                // Mark all parts as inactive
+                const finalParts: MessagePart[] = msg.parts?.map(p => ({
+                  ...p,
+                  isActive: false
+                })) || []
+                // If backend sent full content, add it as final text part
+                let partsWithContent = finalParts
+                if (data.content) {
+                  partsWithContent = [...finalParts, { type: 'text', content: data.content }]
+                }
+                const updated = [...prev]
+                updated[msgIndex] = { ...msg, id: `msg-${Date.now()}`, parts: partsWithContent }
+                return updated
+              }
+            }
+            // No streaming message, add new assistant message
+            if (data.content) {
+              return [...prev, { id: `msg-${Date.now()}`, role: 'assistant', content: data.content, parts: [{ type: 'text', content: data.content }] }]
+            }
+            return prev
+          })
+          streamingMsgIdRef.current = null
           setIsLoading(false)
           break
 
         case 'error':
-          setMessages((prev) => [
-            ...prev,
-            { id: `error-${Date.now()}`, role: 'error', content: data.message }
-          ])
+          setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'error', content: data.message }])
+          streamingMsgIdRef.current = null
           setIsLoading(false)
-          break
-
-        case 'approval_request':
-          // TODO: Handle approval requests
           break
 
         case 'approval_result':
@@ -281,26 +926,27 @@ export default function Chat() {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setIsConnected(false)
+      // Fail fast on abnormal closure after logging
+      if (!event.wasClean && event.code !== 1000) {
+        console.error(`WebSocket closed unexpectedly: ${event.code} ${event.reason}`)
+      }
     }
 
     ws.onerror = (error) => {
+      // Log error details for debugging
       console.error('WebSocket error:', error)
-      setIsConnected(false)
     }
 
     wsRef.current = ws
 
-    return () => {
-      ws.close()
-    }
-  }, [convId, streamingContent])
+    return () => ws.close(1000, 'Component unmounting')
+  }, [convId])
 
-  // Upload file to backend
+  // File upload
   const uploadFile = async (file: File): Promise<UploadedFile | null> => {
     if (!convId) return null
-
     const formData = new FormData()
     formData.append('file', file)
 
@@ -309,11 +955,7 @@ export default function Chat() {
         method: 'POST',
         body: formData
       })
-
-      if (!res.ok) {
-        throw new Error(`Upload failed: ${res.statusText}`)
-      }
-
+      if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`)
       const data = await res.json()
       return { url: data.url, filename: data.filename }
     } catch (err) {
@@ -322,12 +964,19 @@ export default function Chat() {
     }
   }
 
+  // Send message
   const handleSend = async () => {
     if ((!input.trim() && attachments.length === 0) || !wsRef.current || !isConnected) return
 
-    setIsLoading(true)
+    // Add user message immediately
+    const userContent = input.trim()
+    setMessages((prev) => [...prev, {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: userContent
+    }])
 
-    // Upload any pending image attachments first
+    setIsLoading(true)
     const uploadedAttachments: { type: string; url: string; filename: string; mediaType: string }[] = []
 
     for (const attachment of attachments) {
@@ -353,7 +1002,7 @@ export default function Chat() {
     }
 
     wsRef.current.send(JSON.stringify({
-      message: input,
+      message: userContent,
       thinking: thinkingEnabled,
       model: selectedModel,
       attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined
@@ -361,11 +1010,10 @@ export default function Chat() {
 
     setInput('')
     setAttachments([])
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
+  // Keyboard handling
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -377,6 +1025,7 @@ export default function Chat() {
     }
   }
 
+  // File handling
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
@@ -394,17 +1043,13 @@ export default function Chat() {
       }])
     })
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const removeAttachment = (id: string) => {
     setAttachments((prev) => {
       const found = prev.find((a) => a.id === id)
-      if (found?.url) {
-        URL.revokeObjectURL(found.url)
-      }
+      if (found?.url) URL.revokeObjectURL(found.url)
       return prev.filter((a) => a.id !== id)
     })
   }
@@ -425,235 +1070,83 @@ export default function Chat() {
     }
   }
 
+  // Formatting
   const formatContextUsage = () => {
     const usage = statusInfo.context_usage
     if (usage === null) return '--'
     return `${Math.round(usage * 100)}%`
   }
 
-  // Toggle thinking block expansion
-  const toggleThinkExpanded = (id: string) => {
-    setExpandedThink((prev) => {
+  // Toggle block expansion
+  const toggleBlock = (id: string) => {
+    setExpandedBlocks((prev) => {
       const newSet = new Set(prev)
-      if (newSet.has(id)) {
-        newSet.delete(id)
-      } else {
-        newSet.add(id)
-      }
+      if (newSet.has(id)) newSet.delete(id)
+      else newSet.add(id)
       return newSet
     })
   }
 
-  // Toggle tool block expansion
-  const toggleToolExpanded = (id: string) => {
-    setExpandedTool((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(id)) {
-        newSet.delete(id)
-      } else {
-        newSet.add(id)
-      }
-      return newSet
-    })
-  }
+  const selectedModelData = models.find(m => m.id === selectedModel)
 
-  // Check if a thinking block is currently streaming
-  const isThinkingActive = (index: number): boolean => {
-    return isLoading && index === messages.length - 1 && messages[index]?.role === 'thinking'
-  }
-
-  // Render message components
-  const renderUserMessage = (msg: Message) => (
-    <div key={msg.id} className="flex justify-end">
-      <div className="max-w-[80%] rounded-2xl bg-secondary/80 dark:bg-secondary/50 px-4 py-3 text-sm">
-        <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-      </div>
-    </div>
-  )
-
-  const renderAssistantMessage = (msg: Message) => (
-    <div key={msg.id} className="flex justify-start">
-      <div className="max-w-[85%]">
-        <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
-      </div>
-    </div>
-  )
-
-  const renderThinkingBlock = (msg: Message, index: number) => {
-    const isExpanded = blocksExpanded || expandedThink.has(msg.id)
-    const isActive = isThinkingActive(index)
-
-    return (
-      <div key={msg.id} className="flex justify-start">
-        <div className="max-w-[90%] w-full rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-950/10 overflow-hidden">
-          <button
-            onClick={() => toggleThinkExpanded(msg.id)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-100/50 dark:hover:bg-amber-900/20 transition-colors"
-          >
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <Brain size={14} />
-            <span>Thinking...</span>
-            {isActive && <Loader2 size={12} className="animate-spin ml-1" />}
-          </button>
-          {isExpanded && (
-            <div className="px-3 pb-3 text-xs text-amber-800 dark:text-amber-300/80 whitespace-pre-wrap font-mono leading-relaxed">
-              {msg.content}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  const renderToolCall = (msg: Message) => {
-    const isExpanded = blocksExpanded || expandedTool.has(msg.id)
-    const toolName = msg.metadata?.tool_name || 'unknown'
-
-    return (
-      <div key={msg.id} className="flex justify-start">
-        <div className="max-w-[90%] w-full rounded-lg border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/10 overflow-hidden">
-          <button
-            onClick={() => toggleToolExpanded(msg.id)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-colors"
-          >
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <Wrench size={14} />
-            <span>Using {toolName}</span>
-          </button>
-          {isExpanded && msg.metadata?.arguments && (
-            <div className="px-3 pb-3">
-              <pre className="text-xs text-blue-800 dark:text-blue-300/80 whitespace-pre-wrap font-mono bg-blue-100/50 dark:bg-blue-900/20 p-2 rounded">
-                {JSON.stringify(msg.metadata.arguments, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  const renderToolResult = (msg: Message) => (
-    <div key={msg.id} className="flex justify-start">
-      <div className="max-w-[90%] w-full rounded-lg border border-green-200 dark:border-green-800/60 bg-green-50/50 dark:bg-green-950/10 px-3 py-2">
-        <div className="flex items-center gap-2 text-xs font-medium text-green-700 dark:text-green-400 mb-1">
-          <CheckCircle2 size={12} />
-          <span>Result</span>
-        </div>
-        <div className="text-xs text-green-800 dark:text-green-300/80 whitespace-pre-wrap font-mono leading-relaxed">
-          {msg.content}
-        </div>
-      </div>
-    </div>
-  )
-
-  const renderError = (msg: Message) => (
-    <div key={msg.id} className="flex justify-start">
-      <div className="max-w-[80%] px-4 py-3 rounded-lg text-sm bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/60 text-red-800 dark:text-red-300">
-        <div className="flex items-center gap-2 mb-1">
-          <AlertCircle size={14} />
-          <span className="font-medium">Error</span>
-        </div>
-        <div className="whitespace-pre-wrap">{msg.content}</div>
-      </div>
-    </div>
-  )
-
-  const renderApproval = (msg: Message) => (
-    <div key={msg.id} className="flex justify-start">
-      <div className="max-w-[80%] px-3 py-2 rounded-lg border border-purple-200 dark:border-purple-800/60 bg-purple-50/50 dark:bg-purple-950/10">
-        <div className="flex items-center gap-2 text-xs font-medium text-purple-700 dark:text-purple-400">
-          <CheckCircle2 size={12} />
-          <span>{msg.content}</span>
-        </div>
-      </div>
-    </div>
-  )
-
-  // Group messages for display
+  // Render messages
   const renderMessages = () => {
-    const elements: JSX.Element[] = []
-
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i]
-
+    return messages.map((msg) => {
       switch (msg.role) {
         case 'user':
-          elements.push(renderUserMessage(msg))
-          break
+          return <UserMessage key={msg.id} content={msg.content} />
         case 'assistant':
-          elements.push(renderAssistantMessage(msg))
-          break
-        case 'thinking':
-          elements.push(renderThinkingBlock(msg, i))
-          break
-        case 'tool_call':
-          elements.push(renderToolCall(msg))
-          break
-        case 'tool_result':
-          elements.push(renderToolResult(msg))
-          break
+          return (
+            <AssistantMessage
+              key={msg.id}
+              messageId={msg.id}
+              parts={msg.parts}
+              isStreaming={isLoading && msg.id === streamingMsgIdRef.current}
+              expandedBlocks={expandedBlocks}
+              onToggleBlock={toggleBlock}
+              thinkingDuration={thinkingDuration}
+            />
+          )
         case 'error':
-          elements.push(renderError(msg))
-          break
+          return <ErrorMessage key={msg.id} content={msg.content} />
         case 'approval':
-          elements.push(renderApproval(msg))
-          break
+          return <ApprovalMessage key={msg.id} content={msg.content} />
+        default:
+          return null
       }
-    }
-
-    return elements
+    })
   }
 
   return (
-    <div className="h-full flex flex-col bg-background">
-      {/* Chat Header */}
-      <div className="flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3 lg:pl-8 border-b border-border">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1">
-            {convId ? (
-              <span className="text-xs font-bold text-muted-foreground">
-                Active Session
-              </span>
-            ) : (
-              <span className="text-xs font-bold text-muted-foreground">
-                No Active Session
-              </span>
-            )}
-          </div>
+    <div className="h-full flex flex-col bg-background overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          {convId ? (
+            <>
+              <Bot className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium truncate">Chat</span>
+            </>
+          ) : (
+            <span className="text-sm text-muted-foreground">No Active Session</span>
+          )}
         </div>
 
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center gap-1">
           {convId && (
             <>
-              {/* Context Usage */}
-              <div className="relative">
-                <button className="flex items-center gap-1.5 text-xs text-muted-foreground select-none hover:text-foreground transition-colors">
-                  <span>{formatContextUsage()} context</span>
-                  <Info className="size-3" />
-                </button>
-              </div>
-
-              {/* Search Button */}
-              <button
-                type="button"
-                aria-label="Search messages"
-                className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-              >
-                <Search className="size-4" />
+              <button className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors">
+                <span>{formatContextUsage()} context</span>
               </button>
 
-              {/* Toggle Blocks Button */}
+              <div className="w-px h-4 bg-border mx-1" />
+
               <button
-                type="button"
-                aria-label={blocksExpanded ? 'Fold all blocks' : 'Unfold all blocks'}
-                className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-                onClick={() => setBlocksExpanded(!blocksExpanded)}
+                onClick={() => setExpandAll(!expandAll)}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                title={expandAll ? 'Collapse all' : 'Expand all'}
               >
-                {blocksExpanded ? (
-                  <ChevronsDownUp className="size-4" />
-                ) : (
-                  <ChevronsUpDown className="size-4" />
-                )}
+                {expandAll ? <ChevronsDownUp className="w-4 h-4" /> : <ChevronsUpDown className="w-4 h-4" />}
               </button>
             </>
           )}
@@ -661,224 +1154,149 @@ export default function Chat() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto">
         {!convId ? (
-          <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
-              <MessageSquare size={32} className="text-primary" />
+          <div className="h-full flex flex-col items-center justify-center p-8">
+            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
+              <MessageSquare className="w-8 h-8 text-primary" />
             </div>
-            <p className="text-lg font-medium">Welcome to Legion Chat</p>
-            <p className="text-sm mt-2">Select a conversation or create a new one</p>
+            <h1 className="text-2xl font-semibold mb-2">Welcome to Legion Chat</h1>
+            <p className="text-muted-foreground text-sm mb-8">Start a new conversation or select an existing one</p>
             <button
               onClick={createConversation}
-              className="mt-6 flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
             >
-              <Plus size={16} />
+              <Plus className="w-4 h-4" />
               <span>New Chat</span>
             </button>
           </div>
-        ) : messages.length === 0 && !streamingContent ? (
+        ) : messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-            <p className="text-sm">Start a new conversation</p>
+            <Sparkles className="w-8 h-8 mb-4 opacity-50" />
+            <p className="text-sm">How can I help you today?</p>
           </div>
         ) : (
-          <>
+          <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
             {renderMessages()}
-            {/* Streaming content */}
-            {streamingContent && (
-              <div className="flex justify-start">
-                <div className="max-w-[85%]">
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {streamingContent}
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
+            <div ref={messagesEndRef} />
+          </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Area */}
-      <div className="w-full px-2 sm:px-4 pb-4">
-        {/* Attachments Preview */}
-        {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2 px-1">
-            {attachments.map((file) => (
-              <div
-                key={file.id}
-                className="group relative flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-border bg-background text-xs"
-              >
-                {file.type === 'image' ? (
-                  <img src={file.url} alt="" className="w-6 h-6 rounded object-cover" />
-                ) : (
-                  <Paperclip size={14} className="text-muted-foreground" />
-                )}
-                <span className="truncate max-w-[120px]">{file.filename}</span>
+      <div className="px-4 sm:px-6 lg:px-8 py-4 shrink-0 bg-background">
+        <div className="max-w-none">
+          {/* Attachments */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {attachments.map((file) => (
+                <AttachmentPreview
+                  key={file.id}
+                  attachment={file}
+                  onRemove={() => removeAttachment(file.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Input container */}
+          <div className="relative rounded-xl border border-border bg-muted/30 focus-within:bg-background focus-within:border-primary transition-colors">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={!convId ? 'Create a session to start...' : !isConnected ? 'Connecting...' : 'Message...'}
+              disabled={!convId || isLoading || !isConnected}
+              rows={1}
+              className="w-full bg-transparent border-0 px-4 py-3 text-sm resize-none focus:outline-none focus:ring-0 disabled:opacity-50 min-h-[52px] max-h-[200px]"
+            />
+
+            {/* Toolbar */}
+            <div className="flex items-center justify-between px-2 pb-2">
+              <div className="flex items-center gap-0.5">
+                {/* File upload */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  multiple
+                  accept="image/*,.txt,.md,.json,.csv,.py,.js,.ts,.tsx,.html,.css,.yaml,.yml,.xml,.pdf"
+                  className="hidden"
+                />
                 <button
-                  onClick={() => removeAttachment(file.id)}
-                  className="p-0.5 hover:bg-secondary/60 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Input Container */}
-        <div className="w-full border border-border rounded-2xl overflow-hidden bg-background shadow-sm">
-          {/* Text Input */}
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              !convId
-                ? 'Create a session to start...'
-                : !isConnected
-                  ? 'Connecting to environment...'
-                  : 'What would you like to know?'
-            }
-            disabled={!convId || isLoading || !isConnected}
-            rows={1}
-            className="w-full bg-transparent border-none px-4 py-3 text-sm resize-none focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed min-h-[64px] max-h-[200px] field-sizing-content"
-          />
-
-          {/* Footer Toolbar */}
-          <div className="flex items-center justify-between px-2 pb-2">
-            {/* Left Tools */}
-            <div className="flex items-center gap-1">
-              {/* File Upload */}
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                multiple
-                accept="image/*,.txt,.md,.json,.csv,.py,.js,.ts,.tsx,.html,.css,.yaml,.yml,.xml,.pdf"
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!convId || isLoading}
-                className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
-                aria-label="Attach files"
-                title="Attach files"
-              >
-                <Paperclip className="size-4" />
-              </button>
-
-              <div className="mx-0.5 h-4 w-px bg-border/70" />
-
-              {/* Model Selector */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowModelSelector(!showModelSelector)}
+                  onClick={() => fileInputRef.current?.click()}
                   disabled={!convId || isLoading}
-                  className="inline-flex h-9 max-w-[160px] items-center justify-start gap-2 border-0 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
+                  className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
+                  title="Attach files"
                 >
-                  <Cpu className="size-4 shrink-0" />
-                  <span className="truncate">{selectedModel}</span>
+                  <Paperclip className="w-4 h-4" />
                 </button>
 
-                {/* Model Dropdown */}
-                {showModelSelector && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setShowModelSelector(false)}
-                    />
-                    <div className="absolute bottom-full left-0 mb-1 w-64 bg-background border border-border rounded-lg shadow-lg z-50 py-1">
-                      <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b border-border">
-                        Select model
-                      </div>
-                      <div className="max-h-64 overflow-y-auto">
-                        {models.map((model) => {
-                          const isSelected = model.id === selectedModel
-                          return (
-                            <button
-                              key={model.id}
-                              onClick={() => {
-                                setSelectedModel(model.id)
-                                setShowModelSelector(false)
-                              }}
-                              className={clsx(
-                                'w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-secondary/60 transition-colors',
-                                isSelected && 'bg-primary/10 text-primary'
-                              )}
-                            >
-                              {isSelected ? (
-                                <Check className="size-4" />
-                              ) : (
-                                <span className="size-4" />
-                              )}
-                              <span className="flex-1 truncate">{model.name}</span>
-                              <span className="shrink-0 text-xs text-muted-foreground">
-                                {model.provider}
-                              </span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+                <div className="w-px h-4 bg-border mx-1" />
 
-              <div className="mx-0.5 h-4 w-px bg-border/70" />
+                {/* Model selector button */}
+                <button
+                  onClick={() => setShowModelSelector(true)}
+                  disabled={!convId || isLoading || !configLoaded}
+                  className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <Cpu className="w-3.5 h-3.5" />
+                  <span className="max-w-[120px] truncate">{selectedModelData?.name || selectedModel || 'Select model'}</span>
+                </button>
 
-              {/* Thinking Toggle */}
-              <div className="flex h-9 items-center gap-2 rounded-md px-2">
-                <span className="text-xs text-muted-foreground">Thinking</span>
+                {/* Thinking toggle */}
                 <button
                   onClick={() => setThinkingEnabled(!thinkingEnabled)}
                   disabled={!convId || isLoading}
                   className={clsx(
-                    'relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50',
-                    thinkingEnabled ? 'bg-primary' : 'bg-input'
+                    'flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-lg transition-colors disabled:opacity-50',
+                    thinkingEnabled
+                      ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   )}
-                  aria-label={thinkingEnabled ? 'Disable thinking' : 'Enable thinking'}
                 >
-                  <span
-                    className={clsx(
-                      'inline-block h-3.5 w-3.5 transform rounded-full bg-background transition-transform',
-                      thinkingEnabled ? 'translate-x-5' : 'translate-x-1'
-                    )}
-                  />
+                  <Brain className="w-3.5 h-3.5" />
+                  <span>Thinking</span>
                 </button>
               </div>
-            </div>
 
-            {/* Right Tools */}
-            <div className="flex items-center gap-2">
-              {/* Context Usage Display */}
-              <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground mr-2">
-                <span>{formatContextUsage()} context</span>
+              {/* Right side */}
+              <div className="flex items-center gap-2">
+                <span className="hidden sm:inline text-xs text-muted-foreground">
+                  {formatContextUsage()} context
+                </span>
+
+                {isLoading ? (
+                  <button
+                    onClick={() => {}}
+                    className="p-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                  >
+                    <Square className="w-4 h-4 fill-current" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSend}
+                    disabled={!convId || (!input.trim() && attachments.length === 0)}
+                    className="p-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    <CornerDownLeft className="w-4 h-4" />
+                  </button>
+                )}
               </div>
-
-              {isLoading ? (
-                <button
-                  onClick={() => {}}
-                  className="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
-                  aria-label="Stop generation"
-                >
-                  <Square className="size-4" />
-                </button>
-              ) : (
-                <button
-                  onClick={handleSend}
-                  disabled={!convId || isLoading || (!input.trim() && attachments.length === 0)}
-                  className="inline-flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label="Submit"
-                >
-                  <CornerDownLeft className="size-4" />
-                </button>
-              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Model Selector Modal */}
+      <ModelSelectorModal
+        isOpen={showModelSelector}
+        onClose={() => setShowModelSelector(false)}
+        models={models}
+        selectedModel={selectedModel}
+        onSelect={setSelectedModel}
+      />
     </div>
   )
 }

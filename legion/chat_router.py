@@ -6,36 +6,189 @@ import json
 import shutil
 import uuid
 from pathlib import Path
-from typing import Any
 
+import tomlkit
 from fastapi import APIRouter, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
-from kimi_agent_sdk import ApprovalRequest, ToolResult
+from kimi_agent_sdk import ApprovalRequest, ToolResult, WireMessage
 from kimi_cli.wire.types import StatusUpdate
-from kosong.message import ContentPart, ImageURLPart, TextPart, ThinkPart, ToolCall
+from kosong.message import ContentPart, ImageURLPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from loguru import logger
+from pydantic import BaseModel
 
-from legion.conversations import conversation_manager
+from legion.conversations import (
+    ConversationSchema,
+    conversation_manager,
+)
+
+
+class ModelConfig(BaseModel, extra='allow'):
+    """Single model entry under [models.<name>]."""
+
+    provider: str
+    """Provider key (e.g. kimi-internal, qianxun-kimi)."""
+    model: str
+    """Backend model identifier."""
+    max_context_size: int = 0
+    """Max context size."""
+    capabilities: list[str] = []
+    """Optional capabilities (e.g. image_in, thinking)."""
+
+
+class ProviderConfig(BaseModel, extra='allow'):
+    """Single provider entry under [providers.<name>]."""
+
+    type: str
+    """Provider type (e.g. kimi, openai_responses, anthropic, vertexai)."""
+    base_url: str
+    """API base URL."""
+    api_key: str
+    """API key."""
+
+
+class KimiConfig(BaseModel, extra='allow'):
+    """Kimi-cli config file shape."""
+
+    default_model: str = 'kimi-k2-0711'
+    """Default model name."""
+    default_thinking: bool = False
+    """Whether thinking mode is on by default."""
+    models: dict[str, ModelConfig] = {}
+    """Model name to config mapping."""
+    providers: dict[str, ProviderConfig] = {}
+    """Provider name to config mapping."""
+
+
+def _convert_toml_table(obj: object) -> object:
+    """Recursively convert tomlkit tables to plain dicts."""
+    if isinstance(obj, dict):
+        return {k: _convert_toml_table(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_toml_table(item) for item in obj]
+    return obj
+
+
+def _parse_models(raw: object) -> dict[str, ModelConfig]:
+    """Build models dict from raw config; invalid entries raise."""
+    if not isinstance(raw, dict):
+        return {}
+    result: dict[str, ModelConfig] = {}
+    for name, val in raw.items():
+        if not isinstance(val, dict):
+            msg = f'Expected dict for model {name!r}, got {type(val).__name__}'
+            raise TypeError(msg)
+        result[str(name)] = ModelConfig.model_validate(val)
+    return result
+
+
+def _parse_providers(raw: object) -> dict[str, ProviderConfig]:
+    """Build providers dict from raw config; invalid entries raise."""
+    if not isinstance(raw, dict):
+        return {}
+    result: dict[str, ProviderConfig] = {}
+    for name, val in raw.items():
+        if not isinstance(val, dict):
+            msg = f'Expected dict for provider {name!r}, got {type(val).__name__}'
+            raise TypeError(msg)
+        result[str(name)] = ProviderConfig.model_validate(val)
+    return result
+
+
+class ConfigResponse(BaseModel):
+    """GET /config response."""
+
+    config: KimiConfig
+    """Kimi-cli configuration."""
+
+
+class CreateConversationBody(BaseModel):
+    """POST / conversation body."""
+
+    title: str = 'New Conversation'
+    """Conversation title."""
+    work_dir: str | None = None
+    """Working directory path (optional)."""
+
+
+class CreateConversationResponse(BaseModel):
+    """POST / response."""
+
+    conversation: ConversationSchema
+    """Created conversation schema."""
+
+
+class ListConversationsResponse(BaseModel):
+    """GET / response."""
+
+    conversations: list[ConversationSchema]
+    """List of conversation schemas."""
+
+
+class UpdateConversationBody(BaseModel):
+    """PATCH /:id body."""
+
+    title: str | None = None
+    """New title (optional)."""
+    message_count: int | None = None
+    """New message count (optional)."""
+
+
+def load_kimi_config() -> KimiConfig:
+    """Load kimi-cli config from ~/.kimi/config.toml."""
+    config_path = Path.home() / '.kimi' / 'config.toml'
+    default = KimiConfig()
+
+    if not config_path.exists():
+        json_config_path = Path.home() / '.kimi' / 'config.json'
+        if json_config_path.exists():
+            with open(json_config_path, encoding='utf-8') as f:
+                legacy = json.load(f)
+            return KimiConfig(
+                default_model=legacy.get('default_model', default.default_model),
+                default_thinking=legacy.get('default_thinking', default.default_thinking),
+                models=_parse_models(legacy.get('models')),
+                providers=_parse_providers(legacy.get('providers')),
+            )
+        return default
+
+    with open(config_path, encoding='utf-8') as f:
+        config = tomlkit.load(f)
+    raw_models = _convert_toml_table(dict(config.get('models', {})))
+    raw_providers = _convert_toml_table(dict(config.get('providers', {})))
+    return KimiConfig(
+        default_model=config.get('default_model', default.default_model),
+        default_thinking=config.get('default_thinking', default.default_thinking),
+        models=_parse_models(raw_models),
+        providers=_parse_providers(raw_providers),
+    )
 
 
 router = APIRouter(prefix='/api/conversations', tags=['conversations'])
 
 
+@router.get('/config')
+async def get_config() -> ConfigResponse:
+    """Get kimi-cli configuration."""
+    config = load_kimi_config()
+    return ConfigResponse(config=config)
+
+
 @router.get('')
-async def list_conversations() -> dict[str, list[dict[str, Any]]]:
+async def list_conversations() -> ListConversationsResponse:
     """List all conversations."""
     conversations = await conversation_manager.list_conversations()
-    return {'conversations': [conv.to_dict() for conv in conversations]}
+    return ListConversationsResponse(
+        conversations=[ConversationSchema.model_validate(c.to_dict()) for c in conversations]
+    )
 
 
 @router.post('')
-async def create_conversation(data: dict[str, Any]) -> dict[str, Any]:
+async def create_conversation(data: CreateConversationBody) -> CreateConversationResponse:
     """Create a new conversation."""
-    title = data.get('title', 'New Conversation')
-    work_dir = data.get('work_dir')
-
-    conv = await conversation_manager.create_conversation(title, work_dir)
-    return {'conversation': conv.to_dict()}
+    conv = await conversation_manager.create_conversation(data.title, data.work_dir)
+    return CreateConversationResponse(
+        conversation=ConversationSchema.model_validate(conv.to_dict())
+    )
 
 
 @router.get('/{conv_id}')
@@ -63,13 +216,10 @@ async def delete_conversation(conv_id: str) -> Response:
 
 
 @router.patch('/{conv_id}')
-async def update_conversation(conv_id: str, data: dict[str, Any]) -> Response:
+async def update_conversation(conv_id: str, data: UpdateConversationBody) -> Response:
     """Update conversation metadata."""
-    title = data.get('title')
-    message_count = data.get('message_count')
-
     conv = await conversation_manager.update_conversation(
-        conv_id, title=title, message_count=message_count
+        conv_id, title=data.title, message_count=data.message_count
     )
     if conv is None:
         return JSONResponse(
@@ -90,7 +240,7 @@ async def get_conversation_history(conv_id: str) -> Response:
         )
 
     messages = await conversation_manager.get_conversation_history(conv_id)
-    return JSONResponse({'messages': messages})
+    return JSONResponse({'messages': [m.model_dump() for m in messages]})
 
 
 @router.post('/{conv_id}/upload')
@@ -134,17 +284,55 @@ async def upload_file(conv_id: str, file: UploadFile) -> Response:
     )
 
 
-async def _process_wire_message(
-    wire_msg: Any,
-    response_chunks: list[str],
+async def _flush_pending_tool_call(
+    pending: list[ToolCall | None],
     websocket: WebSocket,
 ) -> None:
-    """Process a single wire message and send appropriate response."""
+    """Parse accumulated arguments, send tool_call_complete, clear pending.
+
+    Frontend uses this to replace the streaming string with parsed JSON in place.
+    """
+    call = pending[0]
+    if call is None:
+        return
+    tool_call_id = getattr(call, 'id', None) or ''
+    tool_name = call.function.name if hasattr(call.function, 'name') else 'unknown'
+    args_str = call.function.arguments or ''
+    arguments: dict[str, object] = {}
+    if args_str.strip():
+        try:
+            arguments = json.loads(args_str)
+        except json.JSONDecodeError:
+            pass
+    logger.debug(f'Tool call complete: {tool_name} {arguments}')
+    await websocket.send_json(
+        {
+            'type': 'tool_call_complete',
+            'tool_call_id': tool_call_id,
+            'tool_name': tool_name,
+            'arguments': arguments,
+        }
+    )
+    pending[0] = None
+
+
+async def _process_wire_message(
+    wire_msg: WireMessage,
+    response_chunks: list[str],
+    websocket: WebSocket,
+    pending_tool_call: list[ToolCall | None],
+) -> None:
+    """Process a single wire message and send appropriate response.
+
+    ToolCallPart is merged into pending_tool_call (like kimi_agent_sdk._aggregator);
+    we only parse arguments and send when we have the full string.
+    """
     msg_type = type(wire_msg).__name__
     logger.debug(f'Processing wire message: {msg_type}')
 
     # Handle ContentPart subtypes (TextPart, ThinkPart, etc.)
     if isinstance(wire_msg, ContentPart):
+        await _flush_pending_tool_call(pending_tool_call, websocket)
         if isinstance(wire_msg, TextPart) and wire_msg.text:
             response_chunks.append(wire_msg.text)
             logger.debug(f'Sending text chunk: {wire_msg.text[:50]}...')
@@ -158,23 +346,42 @@ async def _process_wire_message(
             logger.debug(f'Sending thinking: {wire_msg.think[:50]}...')
             await websocket.send_json(
                 {
-                    'type': 'thinking',
+                    'type': 'think',
                     'content': wire_msg.think,
                 }
             )
     elif isinstance(wire_msg, ToolCall):
+        await _flush_pending_tool_call(pending_tool_call, websocket)
+        pending_tool_call[0] = wire_msg
+        # Stream start: frontend shows spinner + arguments_raw (string)
+        tool_call_id = getattr(wire_msg, 'id', None) or ''
         tool_name = wire_msg.function.name if hasattr(wire_msg.function, 'name') else 'unknown'
-        arguments = wire_msg.function.arguments if hasattr(wire_msg.function, 'arguments') else {}
-        logger.debug(f'Tool call: {tool_name}')
+        arguments_raw = wire_msg.function.arguments or ''
         await websocket.send_json(
             {
                 'type': 'tool_call',
+                'tool_call_id': tool_call_id,
                 'tool_name': tool_name,
-                'arguments': arguments,
+                'arguments_raw': arguments_raw,
             }
         )
+    elif isinstance(wire_msg, ToolCallPart):
+        if pending_tool_call[0] is not None:
+            pending_tool_call[0].merge_in_place(wire_msg)
+            # Stream chunk: frontend appends to string (like think)
+            chunk = wire_msg.arguments_part or ''
+            if chunk:
+                tool_call_id = getattr(pending_tool_call[0], 'id', None) or ''
+                await websocket.send_json(
+                    {
+                        'type': 'tool_call_chunk',
+                        'tool_call_id': tool_call_id,
+                        'content': chunk,
+                    }
+                )
     elif isinstance(wire_msg, ToolResult):
-        output = wire_msg.output if hasattr(wire_msg, 'output') else str(wire_msg)
+        await _flush_pending_tool_call(pending_tool_call, websocket)
+        output: str = str(wire_msg.output) if hasattr(wire_msg, 'output') else str(wire_msg)
         logger.debug(f'Tool result: {output[:50]}...')
         await websocket.send_json(
             {
@@ -184,6 +391,7 @@ async def _process_wire_message(
             }
         )
     elif isinstance(wire_msg, ApprovalRequest):
+        await _flush_pending_tool_call(pending_tool_call, websocket)
         # Auto-approve for now (yolo mode)
         wire_msg.resolve('approve')
         logger.debug(f'Approval: {wire_msg.action}')
@@ -195,6 +403,7 @@ async def _process_wire_message(
             }
         )
     elif isinstance(wire_msg, StatusUpdate):
+        await _flush_pending_tool_call(pending_tool_call, websocket)
         # Send status update with context usage
         await websocket.send_json(
             {
@@ -210,18 +419,6 @@ async def chat_websocket(websocket: WebSocket, conv_id: str) -> None:
     """WebSocket endpoint for chat."""
     await websocket.accept()
 
-    # Get or create session
-    session = await conversation_manager.get_or_create_session(conv_id)
-    if session is None:
-        await websocket.send_json(
-            {
-                'type': 'error',
-                'message': 'Conversation not found',
-            }
-        )
-        await websocket.close()
-        return
-
     try:
         while True:
             # Receive message from client
@@ -229,8 +426,25 @@ async def chat_websocket(websocket: WebSocket, conv_id: str) -> None:
             message_data = json.loads(data)
             user_input = message_data.get('message', '')
             attachments = message_data.get('attachments', [])
+            thinking = message_data.get('thinking', False)
+            model = message_data.get('model', '')
 
             if not user_input and not attachments:
+                continue
+
+            # Get or create session with thinking/model params
+            session = await conversation_manager.get_or_create_session(
+                conv_id,
+                thinking=thinking,
+                model=model if model else None,
+            )
+            if session is None:
+                await websocket.send_json(
+                    {
+                        'type': 'error',
+                        'message': 'Failed to create session',
+                    }
+                )
                 continue
 
             # Build content parts
@@ -255,16 +469,15 @@ async def chat_websocket(websocket: WebSocket, conv_id: str) -> None:
 
             # Process through kimi-agent-sdk session
             # Use merge_wire_messages=False for true streaming
-            response_chunks: list[str] = []
+            pending_tool_call: list[ToolCall | None] = [None]
             async for wire_msg in session.prompt(content_parts, merge_wire_messages=False):
-                await _process_wire_message(wire_msg, response_chunks, websocket)
+                await _process_wire_message(wire_msg, [], websocket, pending_tool_call)
+            await _flush_pending_tool_call(pending_tool_call, websocket)
 
-            # Send final response
-            full_response = ''.join(response_chunks)
+            # Send completion signal (stream is complete, no extra content needed)
             await websocket.send_json(
                 {
-                    'type': 'assistant',
-                    'content': full_response,
+                    'type': 'complete',
                 }
             )
 

@@ -2,20 +2,34 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+import tomlkit.exceptions
 from fastapi.testclient import TestClient
 from kimi_agent_sdk import ApprovalRequest, ToolResult
-from kosong.message import TextPart, ThinkPart, ToolCall
+from kosong.message import TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import DisplayBlock, ToolReturnValue
+from pydantic import ValidationError
 
-from legion.chat_router import _process_wire_message
-from legion.conversations import Conversation
+from legion.chat_router import (
+    ModelConfig,
+    ProviderConfig,
+    _flush_pending_tool_call,
+    _process_wire_message,
+    load_kimi_config,
+)
+from legion.conversations import (
+    Conversation,
+    UIMessageAssistant,
+    UIMessageUser,
+)
 from legion.service import create_app
 
 
@@ -33,6 +47,156 @@ def app() -> FastAPI:
 def client(app: FastAPI) -> TestClient:
     """Create test client."""
     return TestClient(app)
+
+
+class TestLoadKimiConfig:
+    """Tests for load_kimi_config and config parsing."""
+
+    def test_missing_config_returns_default(self) -> None:
+        """When neither config.toml nor config.json exists, return default."""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            with patch('legion.chat_router.Path.home', return_value=home):
+                config = load_kimi_config()
+        assert config.default_model == 'kimi-k2-0711'
+        assert config.default_thinking is False
+        assert config.models == {}
+        assert config.providers == {}
+
+    def test_toml_parses_models_and_providers(self) -> None:
+        """Valid config.toml parses models and providers into typed structs."""
+        toml_content = """
+default_model = "kimi-k2-5"
+default_thinking = true
+
+[models.kimi-k2-5]
+provider = "kimi-internal"
+model = "kimi-k2.5"
+max_context_size = 250000
+capabilities = ["video_in", "image_in", "thinking"]
+
+[providers.kimi-internal]
+type = "kimi"
+base_url = "https://api.msh.team/v1"
+api_key = "sk-test"
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            kimi_dir = home / '.kimi'
+            kimi_dir.mkdir()
+            (kimi_dir / 'config.toml').write_text(toml_content, encoding='utf-8')
+            with patch('legion.chat_router.Path.home', return_value=home):
+                config = load_kimi_config()
+        assert config.default_model == 'kimi-k2-5'
+        assert config.default_thinking is True
+        assert 'kimi-k2-5' in config.models
+        model = config.models['kimi-k2-5']
+        assert isinstance(model, ModelConfig)
+        assert model.provider == 'kimi-internal'
+        assert model.model == 'kimi-k2.5'
+        assert model.max_context_size == 250000
+        assert model.capabilities == ['video_in', 'image_in', 'thinking']
+        assert 'kimi-internal' in config.providers
+        prov = config.providers['kimi-internal']
+        assert isinstance(prov, ProviderConfig)
+        assert prov.type == 'kimi'
+        assert prov.base_url == 'https://api.msh.team/v1'
+        assert prov.api_key == 'sk-test'
+
+    def test_json_legacy_parses_models_and_providers(self) -> None:
+        """Legacy config.json (no config.toml) parses models and providers."""
+        json_content = """{
+            "default_model": "gpt-5",
+            "default_thinking": false,
+            "models": {
+                "gpt-5": {
+                    "provider": "qianxun-responses",
+                    "model": "gpt-5",
+                    "max_context_size": 400000,
+                    "capabilities": ["image_in", "thinking"]
+                }
+            },
+            "providers": {
+                "qianxun-responses": {
+                    "type": "openai_responses",
+                    "base_url": "https://openai.app.msh.team/raw/x/v1",
+                    "api_key": "sk-json"
+                }
+            }
+        }"""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            kimi_dir = home / '.kimi'
+            kimi_dir.mkdir()
+            (kimi_dir / 'config.json').write_text(json_content, encoding='utf-8')
+            with patch('legion.chat_router.Path.home', return_value=home):
+                config = load_kimi_config()
+        assert config.default_model == 'gpt-5'
+        assert config.default_thinking is False
+        assert 'gpt-5' in config.models
+        assert config.models['gpt-5'].provider == 'qianxun-responses'
+        assert config.models['gpt-5'].max_context_size == 400000
+        assert 'qianxun-responses' in config.providers
+        assert config.providers['qianxun-responses'].api_key == 'sk-json'
+
+    def test_invalid_toml_raises(self) -> None:
+        """Invalid config.toml raises (fail fast)."""
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch('legion.chat_router.Path.home', return_value=Path(tmp)),
+        ):
+            home = Path(tmp)
+            kimi_dir = home / '.kimi'
+            kimi_dir.mkdir()
+            (kimi_dir / 'config.toml').write_text('invalid toml [[[', encoding='utf-8')
+            with pytest.raises(tomlkit.exceptions.ParseError):
+                load_kimi_config()
+
+    def test_invalid_json_legacy_raises(self) -> None:
+        """Invalid config.json when no toml exists raises (fail fast)."""
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch('legion.chat_router.Path.home', return_value=Path(tmp)),
+        ):
+            home = Path(tmp)
+            kimi_dir = home / '.kimi'
+            kimi_dir.mkdir()
+            (kimi_dir / 'config.json').write_text('not json', encoding='utf-8')
+            with pytest.raises(json.JSONDecodeError):
+                load_kimi_config()
+
+    def test_invalid_model_or_provider_raises(self) -> None:
+        """Invalid model or provider entry raises (fail fast)."""
+        toml_content = """
+default_model = "good"
+default_thinking = false
+
+[models.good]
+provider = "p"
+model = "m"
+max_context_size = 100
+
+[models.bad]
+not_a_valid_model = true
+
+[providers.p]
+type = "kimi"
+base_url = "https://x"
+api_key = "k"
+
+[providers.bad]
+missing_required = true
+"""
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch('legion.chat_router.Path.home', return_value=Path(tmp)),
+        ):
+            home = Path(tmp)
+            kimi_dir = home / '.kimi'
+            kimi_dir.mkdir()
+            (kimi_dir / 'config.toml').write_text(toml_content, encoding='utf-8')
+            with pytest.raises(ValidationError):
+                load_kimi_config()
 
 
 class TestListConversations:
@@ -231,8 +395,8 @@ class TestGetConversationHistory:
         )
 
         mock_history = [
-            {'type': 'user', 'content': 'Hello'},
-            {'type': 'assistant', 'content': 'Hi there'},
+            UIMessageUser(content='Hello'),
+            UIMessageAssistant(content='Hi there', thinking=''),
         ]
 
         with (
@@ -342,9 +506,10 @@ class TestProcessWireMessage:
         """Test processing TextPart message."""
         mock_ws = AsyncMock()
         response_chunks: list[str] = []
+        pending_tool_call: list[ToolCall | None] = [None]
 
         wire_msg = TextPart(text='Hello world')
-        await _process_wire_message(wire_msg, response_chunks, mock_ws)
+        await _process_wire_message(wire_msg, response_chunks, mock_ws, pending_tool_call)
 
         assert response_chunks == ['Hello world']
         mock_ws.send_json.assert_called_once()
@@ -357,37 +522,83 @@ class TestProcessWireMessage:
         """Test processing ThinkPart message."""
         mock_ws = AsyncMock()
         response_chunks: list[str] = []
+        pending_tool_call: list[ToolCall | None] = [None]
 
         wire_msg = ThinkPart(think='Thinking about this...')
-        await _process_wire_message(wire_msg, response_chunks, mock_ws)
+        await _process_wire_message(wire_msg, response_chunks, mock_ws, pending_tool_call)
 
         mock_ws.send_json.assert_called_once()
         call_args = mock_ws.send_json.call_args[0][0]
-        assert call_args['type'] == 'thinking'
+        assert call_args['type'] == 'think'
         assert call_args['content'] == 'Thinking about this...'
 
     @pytest.mark.anyio
     async def test_process_tool_call(self) -> None:
-        """Test processing ToolCall message."""
+        """Test processing ToolCall: stream start (arguments_raw) then complete (arguments)."""
         mock_ws = AsyncMock()
         response_chunks: list[str] = []
+        pending_tool_call: list[ToolCall | None] = [None]
 
         func_body = ToolCall.FunctionBody(name='test_tool', arguments='{"arg1": "value1"}')
         wire_msg = ToolCall(id='call_123', function=func_body)
-        await _process_wire_message(wire_msg, response_chunks, mock_ws)
+        await _process_wire_message(wire_msg, response_chunks, mock_ws, pending_tool_call)
 
-        mock_ws.send_json.assert_called_once()
+        assert mock_ws.send_json.call_count == 1
         call_args = mock_ws.send_json.call_args[0][0]
         assert call_args['type'] == 'tool_call'
+        assert call_args['tool_call_id'] == 'call_123'
         assert call_args['tool_name'] == 'test_tool'
-        # arguments is returned as a string (JSON)
-        assert '"arg1"' in call_args['arguments']
+        assert call_args['arguments_raw'] == '{"arg1": "value1"}'
+
+        await _flush_pending_tool_call(pending_tool_call, mock_ws)
+        assert mock_ws.send_json.call_count == 2
+        complete_args = mock_ws.send_json.call_args_list[1][0][0]
+        assert complete_args['type'] == 'tool_call_complete'
+        assert complete_args['tool_call_id'] == 'call_123'
+        assert complete_args['tool_name'] == 'test_tool'
+        assert complete_args['arguments'] == {'arg1': 'value1'}
+
+    @pytest.mark.anyio
+    async def test_process_tool_call_stream_then_complete(self) -> None:
+        """ToolCall + ToolCallPart streams arguments_raw/chunks, flush sends complete."""
+        mock_ws = AsyncMock()
+        response_chunks: list[str] = []
+        pending_tool_call: list[ToolCall | None] = [None]
+
+        await _process_wire_message(
+            ToolCall(
+                id='call_1', function=ToolCall.FunctionBody(name='run', arguments='{"cmd": "')
+            ),
+            response_chunks,
+            mock_ws,
+            pending_tool_call,
+        )
+        assert mock_ws.send_json.call_count == 1
+        assert mock_ws.send_json.call_args[0][0]['type'] == 'tool_call'
+        assert mock_ws.send_json.call_args[0][0]['arguments_raw'] == '{"cmd": "'
+
+        await _process_wire_message(
+            ToolCallPart(arguments_part='ls"}'),
+            response_chunks,
+            mock_ws,
+            pending_tool_call,
+        )
+        assert mock_ws.send_json.call_count == 2
+        assert mock_ws.send_json.call_args[0][0]['type'] == 'tool_call_chunk'
+        assert mock_ws.send_json.call_args[0][0]['content'] == 'ls"}'
+
+        await _flush_pending_tool_call(pending_tool_call, mock_ws)
+        assert mock_ws.send_json.call_count == 3
+        complete = mock_ws.send_json.call_args[0][0]
+        assert complete['type'] == 'tool_call_complete'
+        assert complete['arguments'] == {'cmd': 'ls'}
 
     @pytest.mark.anyio
     async def test_process_tool_result(self) -> None:
         """Test processing ToolResult message."""
         mock_ws = AsyncMock()
         response_chunks: list[str] = []
+        pending_tool_call: list[ToolCall | None] = [None]
 
         return_value = ToolReturnValue(
             is_error=False,
@@ -396,7 +607,7 @@ class TestProcessWireMessage:
             display=[DisplayBlock(type='text')],
         )
         wire_msg = ToolResult(tool_call_id='call_123', return_value=return_value)
-        await _process_wire_message(wire_msg, response_chunks, mock_ws)
+        await _process_wire_message(wire_msg, response_chunks, mock_ws, pending_tool_call)
 
         mock_ws.send_json.assert_called_once()
         call_args = mock_ws.send_json.call_args[0][0]
@@ -408,6 +619,7 @@ class TestProcessWireMessage:
         """Test processing ApprovalRequest message."""
         mock_ws = AsyncMock()
         response_chunks: list[str] = []
+        pending_tool_call: list[ToolCall | None] = [None]
 
         wire_msg = ApprovalRequest(
             id=str(uuid4()),
@@ -416,7 +628,7 @@ class TestProcessWireMessage:
             action='test_action',
             description='Test description',
         )
-        await _process_wire_message(wire_msg, response_chunks, mock_ws)
+        await _process_wire_message(wire_msg, response_chunks, mock_ws, pending_tool_call)
 
         mock_ws.send_json.assert_called_once()
         call_args = mock_ws.send_json.call_args[0][0]

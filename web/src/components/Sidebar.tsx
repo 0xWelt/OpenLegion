@@ -23,6 +23,7 @@ import {
   History
 } from 'lucide-react'
 import { ThemeToggle } from './ui/ThemeToggle'
+import DeleteConfirmDialog from './ui/DeleteConfirmDialog'
 
 interface SidebarProps {
   open: boolean
@@ -70,6 +71,12 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
+
+  // Delete confirmation state
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean
+    conversation: Conversation | null
+  }>({ isOpen: false, conversation: null })
 
   // Category expansion state - default all expanded, independent control
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(categories))
@@ -137,11 +144,22 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
     }
   }
 
-  // Delete conversation
-  const deleteConversation = async (id: string, e: React.MouseEvent) => {
+  // Open delete confirmation dialog
+  const openDeleteConfirm = (conv: Conversation, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!confirm('Are you sure you want to delete this conversation?')) return
+    setDeleteConfirm({ isOpen: true, conversation: conv })
+  }
 
+  // Close delete confirmation dialog
+  const closeDeleteConfirm = () => {
+    setDeleteConfirm({ isOpen: false, conversation: null })
+  }
+
+  // Delete conversation
+  const confirmDelete = async () => {
+    if (!deleteConfirm.conversation) return
+
+    const id = deleteConfirm.conversation.id
     try {
       await fetch(`/api/conversations/${id}`, { method: 'DELETE' })
       setConversations((prev) => prev.filter((c) => c.id !== id))
@@ -150,6 +168,8 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
       }
     } catch (err) {
       console.error('Failed to delete conversation:', err)
+    } finally {
+      closeDeleteConfirm()
     }
   }
 
@@ -389,7 +409,7 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
                                     <Edit2 size={10} />
                                   </button>
                                   <button
-                                    onClick={(e) => deleteConversation(conv.id, e)}
+                                    onClick={(e) => openDeleteConfirm(conv, e)}
                                     className="p-0.5 text-oc-text-muted hover:text-red-500 hover:bg-red-500/10 rounded"
                                   >
                                     <Trash2 size={10} />
@@ -442,6 +462,15 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
           </button>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Delete Session"
+        itemName={deleteConfirm.conversation?.title || 'this conversation'}
+        onCancel={closeDeleteConfirm}
+        onConfirm={confirmDelete}
+      />
     </aside>
   )
 }

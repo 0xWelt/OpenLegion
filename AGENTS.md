@@ -20,7 +20,9 @@
 - This project uses `pre-commit` to control code quality, which mainly includes `ruff` and `ty` checks. After completing development, you should run `pre-commit run --all` to verify overall quality (no need to run `ruff` and `ty` separately, just run `pre-commit`).
   - Issues found should be properly resolved, and you should not use `# noqa`, `# type: ignore`, or similar methods to skip errors.
   - Use `cast` cautiously and handle all types properly. The only case you are allowed to use `cast` is when you create a MagicMock or similar object, you can cast it into the type of the object you are creating.
+- Minimize the use of `Any` or `object` and try to find specific types for the variables, this will help you to write better code and avoid type errors.
 - In test files, minimize the use of `hasattr`, `setattr`, and `getattr` methods. Prefer type narrowing (using `isinstance`) or `cast` instead. This improves type safety and makes the code more maintainable.
+- Prefer `pydantic.BaseModel` over `TypedDict` when possible, and prefer `TypedDict` over untyped `dict` when possible.
 
 ## Project
 

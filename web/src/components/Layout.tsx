@@ -19,7 +19,7 @@ export default function Layout() {
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         />
-        <main className="flex-1 overflow-auto scrollbar-thin p-6">
+        <main className="flex-1 min-w-0 overflow-hidden">
           <Outlet />
         </main>
       </div>

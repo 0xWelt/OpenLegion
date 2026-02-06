@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import pytest
+from kosong.message import ContentPart, Message, TextPart, ThinkPart
 
-from legion.conversations import Conversation, ConversationManager, conversation_manager
+from legion.conversations import (
+    Conversation,
+    ConversationManager,
+    ConversationSchema,
+    UIMessageAssistant,
+    UIMessageToolResult,
+    UIMessageUser,
+    conversation_manager,
+)
 
 
 class TestConversation:
@@ -37,16 +45,16 @@ class TestConversation:
 
     def test_from_dict(self) -> None:
         """Test creation from dictionary."""
-        data: dict[str, Any] = {
-            'id': 'test456',
-            'title': 'Another Test',
-            'session_id': 'legion-conv-test456',
-            'work_dir': '/tmp/test2',
-            'created_at': '2024-02-01T00:00:00',
-            'updated_at': '2024-02-01T02:00:00',
-            'message_count': 10,
-        }
-        conv = Conversation.from_dict(data)
+        data = ConversationSchema(
+            id='test456',
+            title='Another Test',
+            session_id='legion-conv-test456',
+            work_dir='/tmp/test2',
+            created_at='2024-02-01T00:00:00',
+            updated_at='2024-02-01T02:00:00',
+            message_count=10,
+        )
+        conv = Conversation.from_schema(data)
 
         assert conv.id == 'test456'
         assert conv.title == 'Another Test'
@@ -58,15 +66,15 @@ class TestConversation:
 
     def test_from_dict_default_message_count(self) -> None:
         """Test that message_count defaults to 0."""
-        data: dict[str, Any] = {
-            'id': 'test789',
-            'title': 'Test',
-            'session_id': 'legion-conv-test789',
-            'work_dir': '/tmp/test3',
-            'created_at': '2024-03-01T00:00:00',
-            'updated_at': '2024-03-01T03:00:00',
-        }
-        conv = Conversation.from_dict(data)
+        data = ConversationSchema(
+            id='test789',
+            title='Test',
+            session_id='legion-conv-test789',
+            work_dir='/tmp/test3',
+            created_at='2024-03-01T00:00:00',
+            updated_at='2024-03-01T03:00:00',
+        )
+        conv = Conversation.from_schema(data)
 
         assert conv.message_count == 0
 
@@ -214,65 +222,119 @@ class TestConversationHistory:
 
     def test_extract_text_from_content_list(self) -> None:
         """Test extracting text from list of parts."""
-        content = [
-            {'type': 'text', 'text': 'Hello'},
-            {'type': 'text', 'text': 'world'},
+        content: list[ContentPart] = [
+            TextPart(text='Hello'),
+            TextPart(text='world'),
         ]
         result = self.manager._extract_text_from_content(content)
 
         assert result == 'Hello world'
 
-    def test_extract_text_and_thinking(self) -> None:
-        """Test extracting both text and thinking."""
-        content = [
-            {'type': 'text', 'text': 'Answer'},
-            {'type': 'thinking', 'thinking': 'Let me think'},
+    def test_extract_text_thinking_and_tool_calls(self) -> None:
+        """Test extracting text, thinking and tool calls."""
+        content: list[ContentPart] = [
+            TextPart(text='Answer'),
+            ThinkPart(think='Let me think'),
         ]
-        text, thinking = self.manager._extract_text_and_thinking(content)
+        text, thinking, tool_calls = self.manager._extract_text_thinking_and_tool_calls(content)
 
         assert text == 'Answer'
         assert thinking == 'Let me think'
+        assert tool_calls == []
 
     def test_process_context_record_user(self) -> None:
         """Test processing user context record."""
-        data = {'role': 'user', 'content': [{'type': 'text', 'text': 'Hello'}]}
+        data = Message.model_validate(
+            {
+                'role': 'user',
+                'content': [{'type': 'text', 'text': 'Hello'}],
+            }
+        )
         result = self.manager._process_context_record(data)
 
-        assert result == {'type': 'user', 'content': 'Hello'}
+        assert isinstance(result, UIMessageUser)
+        assert result.content == 'Hello'
 
     def test_process_context_record_assistant(self) -> None:
         """Test processing assistant context record."""
-        data: dict[str, Any] = {
-            'role': 'assistant',
-            'content': [
-                {'type': 'text', 'text': 'Hi'},
-                {'type': 'thinking', 'thinking': 'Thinking...'},
-            ],
-        }
+        data = Message.model_validate(
+            {
+                'role': 'assistant',
+                'content': [
+                    {'type': 'text', 'text': 'Hi'},
+                    {'type': 'think', 'think': 'Thinking...'},
+                ],
+            }
+        )
         result = self.manager._process_context_record(data)
 
-        assert result is not None
-        assert result['type'] == 'assistant'  # type: ignore[index]
-        assert result['content'] == 'Hi'  # type: ignore[index]
-        assert result['thinking'] == 'Thinking...'  # type: ignore[index]
+        assert isinstance(result, UIMessageAssistant)
+        assert result.content == 'Hi'
+        assert result.thinking == 'Thinking...'
 
     def test_process_context_record_tool(self) -> None:
         """Test processing tool context record."""
-        data: dict[str, Any] = {
-            'role': 'tool',
-            'content': 'Result',
-            'tool_call_id': 'call_123',
-        }
+        data = Message.model_validate(
+            {
+                'role': 'tool',
+                'content': 'Result',
+                'tool_call_id': 'call_123',
+            }
+        )
         result = self.manager._process_context_record(data)
 
-        assert result is not None
-        assert result['type'] == 'tool_result'  # type: ignore[index]
-        assert result['tool_call_id'] == 'call_123'  # type: ignore[index]
-        assert result['output'] == 'Result'  # type: ignore[index]
+        assert isinstance(result, UIMessageToolResult)
+        assert result.tool_call_id == 'call_123'
+        assert result.output == 'Result'
+
+    def test_process_context_record_assistant_with_tool_calls(self) -> None:
+        """Test processing assistant record with tool_calls field."""
+        data = Message.model_validate(
+            {
+                'role': 'assistant',
+                'content': [{'type': 'think', 'think': 'Let me use Shell tool'}],
+                'tool_calls': [
+                    {
+                        'type': 'function',
+                        'id': 'Shell:0',
+                        'function': {
+                            'name': 'Shell',
+                            'arguments': '{"command": "ls -la"}',
+                        },
+                    }
+                ],
+            }
+        )
+        result = self.manager._process_context_record(data)
+
+        assert isinstance(result, UIMessageAssistant)
+        assert result.thinking == 'Let me use Shell tool'
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0].tool_name == 'Shell'
+        assert result.tool_calls[0].arguments == {'command': 'ls -la'}
+
+    def test_process_context_record_tool_with_list_content(self) -> None:
+        """Test processing tool record with list content (text parts)."""
+        data = Message.model_validate(
+            {
+                'role': 'tool',
+                'content': [
+                    {'type': 'text', 'text': '<system>Command executed successfully.</system>'},
+                    {'type': 'text', 'text': 'total 0\n'},
+                ],
+                'tool_call_id': 'Shell:0',
+            }
+        )
+        result = self.manager._process_context_record(data)
+
+        assert isinstance(result, UIMessageToolResult)
+        assert result.tool_call_id == 'Shell:0'
+        assert '<system>Command executed successfully.</system>' in result.output
+        assert 'total 0' in result.output
 
     def test_process_context_record_internal(self) -> None:
-        """Test that internal records are skipped."""
-        data: dict[str, Any] = {'role': '_checkpoint', 'data': 'some_data'}
+        """Test that non-user/assistant/tool roles (e.g. system) are skipped."""
+        data = Message(role='system', content=[])
         result = self.manager._process_context_record(data)
 
         assert result is None
