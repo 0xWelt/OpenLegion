@@ -52,7 +52,7 @@ type MessagePart =
 
 interface Message {
   id: string
-  role: 'user' | 'assistant' | 'error' | 'approval' | 'tool_result'
+  role: 'user' | 'assistant' | 'error' | 'approval' | 'approval_request' | 'tool_result'
   content: string
   // For streaming assistant messages, track parts in order
   parts?: MessagePart[]
@@ -1538,7 +1538,7 @@ export default function Chat() {
     }
   }, [convId, loadConversation])
 
-  // WebSocket connection with auto-reconnect
+  // WebSocket connection with auto-reconnect and message handling
   useEffect(() => {
     if (!convId) {
       wsRef.current?.close()
@@ -1551,53 +1551,6 @@ export default function Chat() {
     let reconnectAttempts = 0
     const maxReconnectAttempts = 5
     const reconnectDelay = 1000 // Start with 1 second
-
-    const connectWebSocket = () => {
-      const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/conversations/ws/${convId}`
-      const ws = new WebSocket(wsUrl)
-
-      ws.onopen = () => {
-        setIsConnected(true)
-        reconnectAttempts = 0 // Reset on successful connection
-      }
-
-      ws.onclose = (event) => {
-        setIsConnected(false)
-        if (!event.wasClean && event.code !== 1000) {
-          console.error(`WebSocket closed unexpectedly: ${event.code} ${event.reason}`)
-        }
-
-        // Attempt to reconnect if not at max attempts
-        if (reconnectAttempts < maxReconnectAttempts) {
-          reconnectAttempts++
-          const delay = Math.min(reconnectDelay * reconnectAttempts, 10000) // Max 10 seconds
-          console.log(`WebSocket reconnecting in ${delay}ms... (attempt ${reconnectAttempts})`)
-          reconnectTimeout = setTimeout(connectWebSocket, delay)
-        }
-      }
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
-      }
-
-      wsRef.current = ws
-    }
-
-    connectWebSocket()
-
-    return () => {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout)
-      }
-      wsRef.current?.close()
-      wsRef.current = null
-    }
-  }, [])
-
-  // WebSocket message handling
-  useEffect(() => {
-    const ws = wsRef.current
-    if (!ws) return
 
     // Helper to update or create streaming message
     const updateStreamingMessage = (
@@ -1686,13 +1639,28 @@ export default function Chat() {
               }
               if (typeof data.arguments === 'object' && data.arguments !== null) {
                 const updatedParts = parts.map(p =>
-                  p.type === 'tool_call' && p.isActive ? { ...p, arguments: data.arguments, isActive: false } : p
+                  p.type === 'tool_call' ? { ...p, isActive: false } : p
                 )
-                return updatedParts
+                return [...updatedParts, {
+                  type: 'tool_call',
+                  tool_name: data.tool_name,
+                  tool_call_id: data.tool_call_id,
+                  arguments: data.arguments,
+                  isActive: true
+                }]
               }
-              return [...parts, { type: 'tool_call', tool_name: data.tool_name ?? 'unknown', tool_call_id: data.tool_call_id, arguments: initialArgs, isActive: true }]
+              const updatedParts = parts.map(p =>
+                p.type === 'tool_call' ? { ...p, isActive: false } : p
+              )
+              return [...updatedParts, {
+                type: 'tool_call',
+                tool_name: data.tool_name,
+                tool_call_id: data.tool_call_id,
+                arguments: initialArgs,
+                isActive: true
+              }]
             },
-            { type: 'tool_call', tool_name: data.tool_name ?? 'unknown', tool_call_id: data.tool_call_id, arguments: initialArgs, isActive: true }
+            { type: 'tool_call', tool_name: data.tool_name, tool_call_id: data.tool_call_id, arguments: initialArgs, isActive: true }
           )
           break
         }
@@ -1727,105 +1695,69 @@ export default function Chat() {
           })
           break
 
-        case 'tool_result': {
-          // Insert tool_result right after the assistant message that contains this tool_call_id,
-          // so order stays Calling (Shell: N) → Result (Shell: N) even when results arrive out of order.
-          const newId = `msg-${Date.now()}`
-          const newMsg: Message = {
-            id: newId,
-            role: 'tool_result',
-            content: '',
-            tool_call_id: data.tool_call_id,
-            output: data.output ?? ''
-          }
-          const toolCallId = data.tool_call_id
-          setMessages((prev) => {
-            let insertIndex = prev.length
-            for (let i = 0; i < prev.length; i++) {
-              const msg = prev[i]
-              if (msg.role === 'assistant' && msg.parts) {
-                const hasMatch = msg.parts.some(
-                  (p) => p.type === 'tool_call' && p.tool_call_id === toolCallId
-                )
-                if (hasMatch) {
-                  insertIndex = i + 1
-                  break
-                }
-              }
-            }
-            return [
-              ...prev.slice(0, insertIndex),
-              newMsg,
-              ...prev.slice(insertIndex)
-            ]
-          })
-          // Next chunk/think/tool_call belongs to a new assistant turn
-          streamingMsgIdRef.current = null
+        case 'tool_call_end':
+          // Mark the active tool_call as inactive
+          updateStreamingMessage(
+            (parts) => parts.map(p =>
+              p.type === 'tool_call' ? { ...p, isActive: false } : p
+            )
+          )
           break
-        }
 
-        case 'complete':
-        case 'assistant':
-          // Finalize: mark streaming as done and convert parts if needed
+        case 'tool_result': {
+          // Finalize any active tool_call before adding result
           setMessages((prev) => {
             const streamingId = streamingMsgIdRef.current
             if (streamingId) {
               const msgIndex = prev.findIndex(m => m.id === streamingId)
               if (msgIndex >= 0) {
                 const msg = prev[msgIndex]
-                // If backend sent complete tool_calls, use them to update existing parts
-                const backendToolCalls = data.tool_calls as Array<{tool_name: string; arguments: Record<string, unknown>}> | undefined
-                let partsWithToolCalls = msg.parts || []
-
-                if (backendToolCalls && backendToolCalls.length > 0) {
-                  // Update existing tool_call parts with backend data
-                  let toolCallIndex = 0
-                  partsWithToolCalls = partsWithToolCalls.map(p => {
-                    if (p.type === 'tool_call' && toolCallIndex < backendToolCalls.length) {
-                      const backendTc = backendToolCalls[toolCallIndex++]
-                      return { ...p, tool_name: backendTc.tool_name, arguments: backendTc.arguments, isActive: false }
-                    }
-                    return { ...p, isActive: false }
-                  })
-                } else {
-                  // No backend tool_calls, just mark inactive and try to parse string args
-                  partsWithToolCalls = partsWithToolCalls.map(p => {
-                    if (p.type === 'tool_call' && typeof p.arguments === 'string') {
-                      try {
-                        const parsed = JSON.parse(p.arguments)
-                        return { ...p, arguments: parsed, isActive: false }
-                      } catch {
-                        return { ...p, isActive: false }
-                      }
-                    }
-                    return { ...p, isActive: false }
-                  })
-                }
-
-                // If backend sent full content, add it as final text part
-                let partsWithContent = partsWithToolCalls
-                if (data.content) {
-                  partsWithContent = [...partsWithToolCalls, { type: 'text', content: data.content }]
-                }
+                const finalizedParts = (msg.parts || []).map(p =>
+                  p.type === 'tool_call' ? { ...p, isActive: false } : p
+                )
                 const updated = [...prev]
-                updated[msgIndex] = { ...msg, id: `msg-${Date.now()}`, parts: partsWithContent }
+                updated[msgIndex] = { ...msg, parts: finalizedParts }
                 return updated
               }
             }
-            // No streaming message, add new assistant message
-            if (data.content) {
-              return [...prev, { id: `msg-${Date.now()}`, role: 'assistant', content: data.content, parts: [{ type: 'text', content: data.content }] }]
-            }
             return prev
           })
-          streamingMsgIdRef.current = null
-          setIsLoading(false)
+          // Add tool_result as a separate message for rendering
+          setMessages((prev) => [...prev, {
+            id: `tool-result-${Date.now()}`,
+            role: 'tool_result',
+            content: '',
+            tool_call_id: data.tool_call_id,
+            output: data.output
+          }])
           break
+        }
 
         case 'error':
           setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'error', content: data.message }])
-          streamingMsgIdRef.current = null
           setIsLoading(false)
+          streamingMsgIdRef.current = null
+          break
+
+        case 'complete':
+          setIsLoading(false)
+          // Finalize streaming message
+          if (streamingMsgIdRef.current) {
+            streamingMsgIdRef.current = null
+          }
+          break
+
+        case 'approval_request':
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `approval-req-${Date.now()}`,
+              role: 'approval_request',
+              content: data.tool_name,
+              tool_call_id: data.tool_call_id,
+              arguments: data.arguments
+            }
+          ])
           break
 
         case 'approval_result':
@@ -1837,12 +1769,49 @@ export default function Chat() {
       }
     }
 
-    ws.addEventListener('message', handleMessage)
+    const connectWebSocket = () => {
+      const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/conversations/ws/${convId}`
+      const ws = new WebSocket(wsUrl)
+
+      ws.onopen = () => {
+        setIsConnected(true)
+        reconnectAttempts = 0 // Reset on successful connection
+      }
+
+      ws.onmessage = handleMessage
+
+      ws.onclose = (event) => {
+        setIsConnected(false)
+        if (!event.wasClean && event.code !== 1000) {
+          console.error(`WebSocket closed unexpectedly: ${event.code} ${event.reason}`)
+        }
+
+        // Attempt to reconnect if not at max attempts
+        if (reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++
+          const delay = Math.min(reconnectDelay * reconnectAttempts, 10000) // Max 10 seconds
+          console.log(`WebSocket reconnecting in ${delay}ms... (attempt ${reconnectAttempts})`)
+          reconnectTimeout = setTimeout(connectWebSocket, delay)
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error)
+      }
+
+      wsRef.current = ws
+    }
+
+    connectWebSocket()
 
     return () => {
-      ws.removeEventListener('message', handleMessage)
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+      }
+      wsRef.current?.close()
+      wsRef.current = null
     }
-  }, [])
+  }, [convId, reconnectTrigger])
 
   // Handle page visibility change for reconnection
   useEffect(() => {
