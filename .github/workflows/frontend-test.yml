@@ -31,6 +31,11 @@ jobs:
           cd web
           npm test
 
+      - name: Type-check test code
+        run: |
+          cd web
+          npm run test:typecheck
+
       - name: Build frontend
         run: |
           cd web

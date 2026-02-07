@@ -19,6 +19,7 @@ repos:
       - id: detect-private-key
       - id: debug-statements
       - id: double-quote-string-fixer
+  # ----- Backend lint -----
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.14
     hooks:
@@ -35,12 +36,6 @@ repos:
             .*\.(txt|json|jsonl|ipynb)$
           ).*$
 
-  # Custom hooks for zip strict fixing
-  - repo: https://dev.msh.team/dinghao/pre-commit-hooks.git
-    rev: v0.4.0
-    hooks:
-      - id: zip-strict-fixer
-
   - repo: https://github.com/boidolr/ast-grep-pre-commit
     rev: 0.40.5
     hooks:
@@ -56,12 +51,12 @@ repos:
         pass_filenames: false
         entry: bash -c 'PYTHON_ARG=$([ -d .venv ] && echo "--python=.venv/"); if [[ -n "$VIRTUAL_ENV" || -n "$UV_SYSTEM_PYTHON" ]]; then ty check $PYTHON_ARG --output-format concise --exclude hatch_build.py; else uv run ty check $PYTHON_ARG --output-format concise --exclude hatch_build.py; fi'
 
-  # Frontend lint: TypeScript build check
+  # ----- Frontend lint -----
   - repo: local
     hooks:
-      - id: frontend-build-check
-        name: frontend-build-check
+      - id: frontend-lint
+        name: frontend-lint
         language: system
         pass_filenames: false
-        entry: bash -c 'cd web && npm run build'
+        entry: bash -c 'cd web && npm run lint'
         files: ^web/

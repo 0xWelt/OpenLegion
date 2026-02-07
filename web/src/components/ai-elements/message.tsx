@@ -57,12 +57,12 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
 };
 
 export const MessageResponse = memo(
-  ({ 
-    className, 
-    children, 
+  ({
+    className,
+    children,
     mode = "static",
     parseIncompleteMarkdown = false,
-    ...props 
+    ...props
   }: MessageResponseProps) => (
     <Streamdown
       className={cn(

@@ -70,14 +70,14 @@ default_model = "kimi-k2-5"
 default_thinking = true
 
 [models.kimi-k2-5]
-provider = "kimi-internal"
+provider = "kimi"
 model = "kimi-k2.5"
 max_context_size = 250000
 capabilities = ["video_in", "image_in", "thinking"]
 
-[providers.kimi-internal]
+[providers.kimi]
 type = "kimi"
-base_url = "https://api.msh.team/v1"
+base_url = "https://api.moonshot.cn/v1"
 api_key = "sk-test"
 """
         with tempfile.TemporaryDirectory() as tmp:
@@ -92,15 +92,15 @@ api_key = "sk-test"
         assert 'kimi-k2-5' in config.models
         model = config.models['kimi-k2-5']
         assert isinstance(model, ModelConfig)
-        assert model.provider == 'kimi-internal'
+        assert model.provider == 'kimi'
         assert model.model == 'kimi-k2.5'
         assert model.max_context_size == 250000
         assert model.capabilities == ['video_in', 'image_in', 'thinking']
-        assert 'kimi-internal' in config.providers
-        prov = config.providers['kimi-internal']
+        assert 'kimi' in config.providers
+        prov = config.providers['kimi']
         assert isinstance(prov, ProviderConfig)
         assert prov.type == 'kimi'
-        assert prov.base_url == 'https://api.msh.team/v1'
+        assert prov.base_url == 'https://api.moonshot.cn/v1'
         assert prov.api_key == 'sk-test'
 
     def test_json_legacy_parses_models_and_providers(self) -> None:
@@ -110,16 +110,16 @@ api_key = "sk-test"
             "default_thinking": false,
             "models": {
                 "gpt-5": {
-                    "provider": "qianxun-responses",
+                    "provider": "openai_responses",
                     "model": "gpt-5",
                     "max_context_size": 400000,
                     "capabilities": ["image_in", "thinking"]
                 }
             },
             "providers": {
-                "qianxun-responses": {
+                "openai_responses": {
                     "type": "openai_responses",
-                    "base_url": "https://openai.app.msh.team/raw/x/v1",
+                    "base_url": "https://openai.app.moonshot.cn/raw/x/v1",
                     "api_key": "sk-json"
                 }
             }
@@ -134,10 +134,10 @@ api_key = "sk-test"
         assert config.default_model == 'gpt-5'
         assert config.default_thinking is False
         assert 'gpt-5' in config.models
-        assert config.models['gpt-5'].provider == 'qianxun-responses'
+        assert config.models['gpt-5'].provider == 'openai_responses'
         assert config.models['gpt-5'].max_context_size == 400000
-        assert 'qianxun-responses' in config.providers
-        assert config.providers['qianxun-responses'].api_key == 'sk-json'
+        assert 'openai_responses' in config.providers
+        assert config.providers['openai_responses'].api_key == 'sk-json'
 
     def test_invalid_toml_raises(self) -> None:
         """Invalid config.toml raises (fail fast)."""

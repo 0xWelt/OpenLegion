@@ -27,7 +27,7 @@ class ModelConfig(BaseModel, extra='allow'):
     """Single model entry under [models.<name>]."""
 
     provider: str
-    """Provider key (e.g. kimi-internal, qianxun-kimi)."""
+    """Provider key (e.g. kimi)."""
     model: str
     """Backend model identifier."""
     max_context_size: int = 0
