@@ -24,6 +24,11 @@
 - In test files, minimize the use of `hasattr`, `setattr`, and `getattr` methods. Prefer type narrowing (using `isinstance`) or `cast` instead. This improves type safety and makes the code more maintainable.
 - Prefer `pydantic.BaseModel` over `TypedDict` when possible, and prefer `TypedDict` over untyped `dict` when possible.
 
+## Frontend
+
+- **Lint**: The project uses TypeScript (`tsc`) for type checking, which is integrated into the build process (`npm run build`). There is no separate ESLint configuration currently. Ensure your code passes TypeScript type checking before committing.
+- **Test**: The project uses `vitest` for testing. Run `npm test` to execute tests. You should write tests for components and utilities you implement, placing test files alongside the source files with a `.test.ts` or `.test.tsx` suffix.
+
 ## Project
 
 - The project has a frontend-backend separated structure; the frontend implementation is largely based on [kimi-cli](https://github.com/MoonshotAI/kimi-cli). Refer to that repo when you need details.

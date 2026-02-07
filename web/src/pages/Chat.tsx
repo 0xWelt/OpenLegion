@@ -36,7 +36,8 @@ import {
   Sparkles,
   Bot
 } from 'lucide-react'
-import Tooltip from '../components/ui/Tooltip'
+import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/Tooltip'
+import { useClickOutside } from '../hooks/use-click-outside'
 
 // =============================================================================
 // TYPES
@@ -310,6 +311,7 @@ const ModelSelectorModal = memo(({
 }) => {
   const [searchQuery, setSearchQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const modalRef = useClickOutside<HTMLDivElement>(() => isOpen && onClose())
 
   // Focus input when modal opens
   useEffect(() => {
@@ -349,7 +351,7 @@ const ModelSelectorModal = memo(({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="w-full max-w-2xl max-h-[80vh] flex flex-col bg-oc-bg rounded-xl border border-oc-border shadow-2xl overflow-hidden">
+      <div ref={modalRef} className="w-full max-w-2xl max-h-[80vh] flex flex-col bg-oc-bg rounded-xl border border-oc-border shadow-2xl overflow-hidden">
         {/* Header with search */}
         <div className="p-4 border-b border-oc-border">
           <div className="flex items-center justify-between mb-4">
@@ -992,7 +994,7 @@ const ChatHeader = memo(({
   const usagePercent = Math.round(contextUsage * 100)
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b border-oc-border shrink-0 bg-oc-bg">
+    <div className="flex items-center justify-between px-4 py-2 shrink-0 bg-oc-bg">
       <div className="flex items-center gap-2 min-w-0">
         {convId ? (
           <>
@@ -1044,36 +1046,38 @@ const ChatHeader = memo(({
             </div>
 
             {/* Search Button with Tooltip */}
-            <Tooltip
-              content={
-                <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onOpenSearch}
+                  className="p-2 text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-md transition-colors"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <div className="flex items-center gap-1.5">
                   <span>Search messages</span>
-                  <kbd className="px-1.5 py-0.5 bg-oc-surface rounded text-xs font-sans">Cmd</kbd>
+                  <kbd className="px-1 py-0.5 bg-oc-bg rounded text-xs font-sans">Cmd</kbd>
                   <span className="text-xs">+</span>
-                  <kbd className="px-1.5 py-0.5 bg-oc-surface rounded text-xs font-sans">F</kbd>
+                  <kbd className="px-1 py-0.5 bg-oc-bg rounded text-xs font-sans">F</kbd>
                 </div>
-              }
-              placement="bottom"
-            >
-              <button
-                onClick={onOpenSearch}
-                className="p-2 text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-md transition-colors"
-              >
-                <Search className="w-4 h-4" />
-              </button>
+              </TooltipContent>
             </Tooltip>
 
             {/* Expand/Collapse All Button with Tooltip */}
-            <Tooltip
-              content={expandAll ? 'Collapse all' : 'Expand all'}
-              placement="bottom"
-            >
-              <button
-                onClick={onToggleExpandAll}
-                className="p-2 text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-md transition-colors"
-              >
-                {expandAll ? <ChevronsDownUp className="w-4 h-4" /> : <ChevronsUpDown className="w-4 h-4" />}
-              </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onToggleExpandAll}
+                  className="p-2 text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-md transition-colors"
+                >
+                  {expandAll ? <ChevronsDownUp className="w-4 h-4" /> : <ChevronsUpDown className="w-4 h-4" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {expandAll ? 'Collapse all' : 'Expand all'}
+              </TooltipContent>
             </Tooltip>
           </>
         )}
@@ -1100,6 +1104,7 @@ const SearchModal = memo(({
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
+  const modalRef = useClickOutside<HTMLDivElement>(() => isOpen && onClose())
 
   // Compute results first (before any effects that use it)
   const results = useMemo(() => {
@@ -1169,7 +1174,7 @@ const SearchModal = memo(({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/50">
-      <div className="w-full max-w-2xl bg-oc-bg border border-oc-border rounded-xl shadow-2xl overflow-hidden">
+      <div ref={modalRef} className="w-full max-w-2xl bg-oc-bg border border-oc-border rounded-xl shadow-2xl overflow-hidden">
         {/* Search Input */}
         <div className="flex items-center gap-3 px-4 py-4 border-b border-oc-border">
           <Search className="w-5 h-5 text-oc-text-muted flex-shrink-0" />
