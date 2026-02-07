@@ -8,13 +8,19 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': {
-        target: process.env.VITE_API_TARGET ?? 'http://127.0.0.1:18790',
+      // WebSocket proxy must come before HTTP proxy
+      '/api/conversations/ws': {
+        target: process.env.VITE_API_TARGET?.replace('http', 'ws') ?? 'ws://127.0.0.1:18790',
+        ws: true,
         changeOrigin: true,
       },
       '/ws': {
         target: process.env.VITE_API_TARGET?.replace('http', 'ws') ?? 'ws://127.0.0.1:18790',
         ws: true,
+      },
+      '/api': {
+        target: process.env.VITE_API_TARGET ?? 'http://127.0.0.1:18790',
+        changeOrigin: true,
       },
     },
   },

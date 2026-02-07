@@ -27,7 +27,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Overview />} />
-          <Route path="chat" element={<Chat />} />
+          <Route path="chat/*" element={<Chat />} />
           <Route path="channels" element={<Channels />} />
           <Route path="instances" element={<Instances />} />
           <Route path="sessions" element={<Sessions />} />

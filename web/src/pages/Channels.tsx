@@ -1,4 +1,4 @@
-import { Radio, Plus, Settings } from 'lucide-react'
+import { Plus, Settings } from 'lucide-react'
 
 export default function Channels() {
   const channels = [

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Monitor, Layers, CalendarClock, Radio, Activity } from 'lucide-react'
+
 
 interface StatusData {
   status: string
@@ -8,7 +8,7 @@ interface StatusData {
 }
 
 export default function Overview() {
-  const [status, setStatus] = useState<StatusData | null>(null)
+  const [, setStatus] = useState<StatusData | null>(null)
   const [wsStatus, setWsStatus] = useState<'connected' | 'disconnected'>('disconnected')
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export default function Overview() {
 
     // WebSocket connection
     const ws = new WebSocket(`ws://${window.location.host}/ws`)
-    
+
     ws.onopen = () => setWsStatus('connected')
     ws.onclose = () => setWsStatus('disconnected')
     ws.onerror = () => setWsStatus('disconnected')

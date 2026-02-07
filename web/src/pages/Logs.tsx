@@ -1,4 +1,4 @@
-import { FileText, Download, Trash2 } from 'lucide-react'
+import { Download, Trash2 } from 'lucide-react'
 
 export default function Logs() {
   const logs = [
