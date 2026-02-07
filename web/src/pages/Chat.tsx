@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState, useCallback, memo, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneLight, oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { MessageResponse } from '../components/ai-elements/message'
 import {
   Check,
   Paperclip,
@@ -38,7 +33,6 @@ import {
 } from 'lucide-react'
 import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/Tooltip'
 import { useClickOutside } from '../hooks/use-click-outside'
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -113,163 +107,16 @@ const formatDuration = (ms: number): string => {
 // COMPONENTS
 // =============================================================================
 
-// Hook to detect dark mode changes
-const useDarkMode = () => {
-  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'))
-
-  useEffect(() => {
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.attributeName === 'class') {
-          setIsDark(document.documentElement.classList.contains('dark'))
-        }
-      })
-    })
-
-    observer.observe(document.documentElement, { attributes: true })
-    return () => observer.disconnect()
-  }, [])
-
-  return isDark
-}
-
-// Code block with copy button in top-right corner
-const CodeBlock = memo(({ code, language }: { code: string; language?: string }) => {
-  const [copied, setCopied] = useState(false)
-  const isDark = useDarkMode()
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(code)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
+// Markdown renderer using Streamdown (kimi-cli style)
+const MarkdownContent = memo(({ content, isStreaming = false }: { content: string; isStreaming?: boolean }) => {
   return (
-    <div className="relative group my-2">
-      <button
-        onClick={handleCopy}
-        className="absolute top-2 right-2 z-10 p-1.5 rounded bg-black/20 hover:bg-black/30 dark:bg-white/10 dark:hover:bg-white/20 transition-colors opacity-0 group-hover:opacity-100"
-        title="Copy code"
-      >
-        {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-white/70" />}
-      </button>
-      <div className="rounded-lg overflow-hidden border border-border">
-        <SyntaxHighlighter
-          language={language || 'text'}
-          style={isDark ? oneDark : oneLight}
-          customStyle={{ margin: 0, borderRadius: 0, fontSize: '0.875rem' }}
-          showLineNumbers
-        >
-          {code}
-        </SyntaxHighlighter>
-      </div>
-    </div>
-  )
-})
-
-// Markdown renderer with math support
-const MarkdownContent = memo(({ content }: { content: string }) => {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={{
-        code({ node, inline, className, children, ...props }: any) {
-          const match = /language-(\w+)/.exec(className || '')
-          const code = String(children).replace(/\n$/, '')
-
-          // Check if this is inline code:
-          // 1. explicit inline flag from react-markdown
-          // 2. no language class (inline code doesn't have language-xxx class)
-          // 3. no newlines in content
-          const isInline = inline || (!match && !code.includes('\n'))
-
-          if (isInline) {
-            return (
-              <code
-                className="px-1.5 py-0.5 rounded font-mono text-sm bg-oc-surface text-oc-text border border-oc-border"
-                {...props}
-              >
-                {children}
-              </code>
-            )
-          }
-
-          return <CodeBlock code={code} language={match?.[1]} />
-        },
-        pre({ children }) {
-          return <>{children}</>
-        },
-        p({ children }) {
-          return <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>
-        },
-        ul({ children }) {
-          return <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>
-        },
-        ol({ children }) {
-          return <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>
-        },
-        li({ children }) {
-          return <li className="leading-relaxed">{children}</li>
-        },
-        h1({ children }) {
-          return <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>
-        },
-        h2({ children }) {
-          return <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>
-        },
-        h3({ children }) {
-          return <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>
-        },
-        blockquote({ children }) {
-          return (
-            <blockquote className="border-l-2 border-primary pl-4 italic text-muted-foreground my-4">
-              {children}
-            </blockquote>
-          )
-        },
-        table({ children }) {
-          return (
-            <div className="overflow-x-auto my-4">
-              <table className="w-full border-collapse border border-border">
-                {children}
-              </table>
-            </div>
-          )
-        },
-        thead({ children }) {
-          return <thead className="bg-muted">{children}</thead>
-        },
-        th({ children }) {
-          return (
-            <th className="border border-border px-3 py-2 text-left font-semibold text-sm">
-              {children}
-            </th>
-          )
-        },
-        td({ children }) {
-          return (
-            <td className="border border-border px-3 py-2 text-sm">
-              {children}
-            </td>
-          )
-        },
-        a({ href, children }) {
-          return (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-            >
-              {children}
-            </a>
-          )
-        },
-      }}
+    <MessageResponse
+      mode={isStreaming ? "streaming" : "static"}
+      parseIncompleteMarkdown={isStreaming}
+      className="text-sm leading-relaxed"
     >
       {content}
-    </ReactMarkdown>
+    </MessageResponse>
   )
 })
 
@@ -506,8 +353,8 @@ const AssistantMessage = memo(({
                 </button>
                 {isExpanded && (
                   <div className="mt-2 pl-6 border-l-2 border-amber-300 dark:border-amber-700/50">
-                    <div className="text-xs text-amber-700 dark:text-amber-400/80 whitespace-pre-wrap font-mono leading-relaxed">
-                      {part.content}
+                    <div className="text-sm text-amber-800 dark:text-amber-400/90">
+                      <MarkdownContent content={part.content} isStreaming={isStreaming && isLastPart} />
                     </div>
                   </div>
                 )}
@@ -572,8 +419,8 @@ const AssistantMessage = memo(({
                 </button>
                 {isExpanded && (
                   <div className="mt-2 pl-6 border-l-2 border-emerald-300 dark:border-emerald-700/50">
-                    <div className="text-xs text-emerald-700 dark:text-emerald-400/80 whitespace-pre-wrap font-mono leading-relaxed">
-                      {part.output}
+                    <div className="text-sm text-emerald-800 dark:text-emerald-400/90">
+                      <MarkdownContent content={part.output || ''} isStreaming={false} />
                     </div>
                   </div>
                 )}
@@ -582,7 +429,7 @@ const AssistantMessage = memo(({
           }
 
           if (part.type === 'text') {
-            return <MarkdownContent key={blockId} content={part.content} />
+            return <MarkdownContent key={blockId} content={part.content} isStreaming={isStreaming && isLastPart} />
           }
 
           return null
@@ -653,8 +500,8 @@ const ToolResultMessage = memo(({
         </button>
         {isExpanded && (
           <div className="mt-2 pl-6 border-l-2 border-emerald-300 dark:border-emerald-700/50">
-            <div className="text-xs text-emerald-700 dark:text-emerald-400/80 whitespace-pre-wrap font-mono leading-relaxed">
-              {outputStr}
+            <div className="text-sm text-emerald-800 dark:text-emerald-400/90">
+              <MarkdownContent content={outputStr} isStreaming={false} />
             </div>
           </div>
         )}
