@@ -7,7 +7,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { oneLight, oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import {
   Check,
   Paperclip,
@@ -971,7 +971,7 @@ const ChatHeader = memo(({
 
     timeoutRef.current = setTimeout(() => {
       setShowContextPopover(true)
-    }, 200)
+    }, 0)
   }
 
   const handleMouseLeave = () => {
@@ -980,7 +980,7 @@ const ChatHeader = memo(({
     }
     timeoutRef.current = setTimeout(() => {
       setShowContextPopover(false)
-    }, 150)
+    }, 0)
   }
 
   useEffect(() => {
@@ -1592,7 +1592,7 @@ export default function Chat() {
       wsRef.current?.close()
       wsRef.current = null
     }
-  }, [convId, reconnectTrigger])
+  }, [])
 
   // WebSocket message handling
   useEffect(() => {
