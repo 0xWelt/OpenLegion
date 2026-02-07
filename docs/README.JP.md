@@ -15,27 +15,19 @@ Python で書かれた、また別の OpenClaw。
 - **開発ツール**：このプロジェクトはほぼ完全に [kimi-cli](https://github.com/MoonshotAI/kimi-cli) と [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) モデルを使用して開発されました。
 - **インスピレーション**：このプロジェクトは [OpenClaw](https://github.com/openclaw/openclaw) に触発されています。
 
-## インストール
+## クイックスタート（開発モード）
 
-[uv](https://github.com/astral-sh/uv) を使用して Legion をインストール：
+**前提条件**：Legion はバックエンドとして [Kimi Code](https://www.kimi.com/code)（kimi-cli とも呼ばれます）に依存しています。まず Kimi Code をセットアップしてください —— Legion はそのすべての設定（API トークンを含む）を再利用します。
 
-```bash
-uv tool install git+https://github.com/0xWelt/OpenLegion
-```
-
-## クイックスタート
-
-Legion サービスを起動して Web UI を開く：
+リポジトリをクローンし、フロントエンドとバックエンドの両方でホットリロードを有効にしてローカルで実行：
 
 ```bash
-legion web
+git clone https://github.com/0xWelt/OpenLegion.git
+cd OpenLegion
+make install
 ```
 
-このコマンドはサービスを自動的に起動し（実行中でない場合）、ブラウザを開きます。
-
-## 開発
-
-ローカル開発時に、ホットリロードを有効にして前后端を同时に起動：
+次に、別々のターミナルで：
 
 ```bash
 # ターミナル 1：バックエンド API サーバーを起動

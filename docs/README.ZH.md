@@ -15,27 +15,19 @@
 - **开发工具**：本项目几乎完全使用 [kimi-cli](https://github.com/MoonshotAI/kimi-cli) 配合 [k2.5](https://github.com/MoonshotAI/Kimi-K2.5) 模型开发完成。
 - **灵感来源**：本项目受到 [OpenClaw](https://github.com/openclaw/openclaw) 的启发。
 
-## 安装
+## 快速开始（开发模式）
 
-使用 [uv](https://github.com/astral-sh/uv) 安装 Legion：
+**前置条件**：Legion 依赖 [Kimi Code](https://www.kimi.com/code)（也称 kimi-cli）作为后端。请先完成 Kimi Code 的配置 —— Legion 将复用其全部配置（包括 API token）。
 
-```bash
-uv tool install git+https://github.com/0xWelt/OpenLegion
-```
-
-## 快速开始
-
-启动 Legion 服务并打开 Web UI：
+克隆仓库并在本地以热重载模式运行前后端：
 
 ```bash
-legion web
+git clone https://github.com/0xWelt/OpenLegion.git
+cd OpenLegion
+make install
 ```
 
-此命令会自动启动服务（如未运行）并打开浏览器。
-
-## 开发
-
-在本地开发时，使用热重载模式同时启动前后端：
+然后在不同终端中分别执行：
 
 ```bash
 # 终端 1：启动后端 API 服务
