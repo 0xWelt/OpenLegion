@@ -10,7 +10,7 @@ from pathlib import Path
 import tomlkit
 from fastapi import APIRouter, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
-from kimi_agent_sdk import ApprovalRequest, ToolResult, WireMessage
+from kimi_agent_sdk import ApprovalRequest, RunCancelled, ToolResult, WireMessage
 from kimi_cli.soul.message import tool_result_to_message
 from kimi_cli.wire.types import StatusUpdate
 from kosong.message import ContentPart, ImageURLPart, TextPart, ThinkPart, ToolCall, ToolCallPart
@@ -426,11 +426,24 @@ async def chat_websocket(websocket: WebSocket, conv_id: str) -> None:
     """WebSocket endpoint for chat."""
     await websocket.accept()
 
+    # Track current session for cancellation
+    current_session = None
+
     try:
         while True:
             # Receive message from client
             data = await websocket.receive_text()
             message_data = json.loads(data)
+
+            # Handle stop signal
+            if message_data.get('type') == 'stop':
+                if current_session is not None:
+                    logger.debug('Stop signal received, cancelling session')
+                    current_session.cancel()
+                else:
+                    logger.debug('Stop signal received but no active session')
+                continue
+
             user_input = message_data.get('message', '')
             attachments = message_data.get('attachments', [])
             thinking = message_data.get('thinking', False)
@@ -440,12 +453,12 @@ async def chat_websocket(websocket: WebSocket, conv_id: str) -> None:
                 continue
 
             # Get or create session with thinking/model params
-            session = await conversation_manager.get_or_create_session(
+            current_session = await conversation_manager.get_or_create_session(
                 conv_id,
                 thinking=thinking,
                 model=model if model else None,
             )
-            if session is None:
+            if current_session is None:
                 await websocket.send_json(
                     {
                         'type': 'error',
@@ -475,13 +488,34 @@ async def chat_websocket(websocket: WebSocket, conv_id: str) -> None:
             )
 
             # Process through kimi-agent-sdk session
-            # Use merge_wire_messages=False for true streaming
             pending_tool_call: list[ToolCall | None] = [None]
-            async for wire_msg in session.prompt(content_parts, merge_wire_messages=False):
-                await _process_wire_message(wire_msg, [], websocket, pending_tool_call)
-            await _flush_pending_tool_call(pending_tool_call, websocket)
+            try:
+                async for wire_msg in current_session.prompt(
+                    content_parts, merge_wire_messages=False
+                ):
+                    await _process_wire_message(wire_msg, [], websocket, pending_tool_call)
+                await _flush_pending_tool_call(pending_tool_call, websocket)
+            except RunCancelled:
+                logger.debug('Generation was cancelled by user')
+                await _flush_pending_tool_call(pending_tool_call, websocket)
+            except (
+                RuntimeError,
+                ValueError,
+                OSError,
+                ConnectionError,
+                TimeoutError,
+                KeyError,
+                TypeError,
+            ) as e:
+                logger.exception('Error during generation')
+                await websocket.send_json(
+                    {
+                        'type': 'error',
+                        'message': f'Generation error: {e}',
+                    }
+                )
 
-            # Send completion signal (stream is complete, no extra content needed)
+            # Send completion signal (stream is complete or stopped)
             await websocket.send_json(
                 {
                     'type': 'complete',
@@ -496,10 +530,20 @@ async def chat_websocket(websocket: WebSocket, conv_id: str) -> None:
                     message_count=conv.message_count + 2,  # user + assistant
                 )
 
+            # Clear current session reference
+            current_session = None
+
     except WebSocketDisconnect:
         # Client disconnected, session remains for resume
         pass
-    except Exception as e:  # noqa: BLE001
+    except (
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        OSError,
+    ) as e:
         await websocket.send_json(
             {
                 'type': 'error',

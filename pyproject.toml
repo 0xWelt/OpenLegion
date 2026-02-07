@@ -210,6 +210,9 @@ max-statements = 60
 "__init__.py" = [
     "F401",     # unused-import
 ]
+"legion/chat_router.py" = [
+    "PLR0912",  # chat_websocket: many branches required by message handling
+]
 "test/**/*.py" = [
     "ANN",      # flake8-annotations
     "S108",     # hardcoded-temp-file

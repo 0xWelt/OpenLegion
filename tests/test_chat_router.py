@@ -13,7 +13,7 @@ from uuid import uuid4
 import pytest
 import tomlkit.exceptions
 from fastapi.testclient import TestClient
-from kimi_agent_sdk import ApprovalRequest, ToolResult
+from kimi_agent_sdk import ApprovalRequest, RunCancelled, ToolResult
 from kosong.message import TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import DisplayBlock, ToolReturnValue
 from pydantic import ValidationError
@@ -496,6 +496,122 @@ class TestUploadFile:
             assert response.json()['error'] == 'Conversation not found'
         finally:
             os.unlink(temp_path)
+
+
+class TestWebSocketStopGeneration:
+    """Tests for WebSocket stop generation functionality."""
+
+    @pytest.mark.anyio
+    async def test_stop_signal_ignored_when_no_session(self, client: TestClient) -> None:
+        """Test that stop signal is ignored when no active session."""
+        mock_conv = Conversation(
+            id='stop-idle-123',
+            title='Stop Idle Test',
+            session_id='legion-conv-stop-idle-123',
+            work_dir='/tmp/stop-idle-test',
+            created_at='2024-01-01T00:00:00',
+            updated_at='2024-01-01T01:00:00',
+            message_count=0,
+        )
+
+        async def mock_prompt_echo(*_args: object, **_kwargs: object):
+            """Simulate generation that completes normally."""
+            yield TextPart(text='Echo response')
+
+        with (
+            patch(
+                'legion.conversations.conversation_manager.get_conversation',
+                return_value=mock_conv,
+            ),
+            patch(
+                'legion.conversations.conversation_manager.get_or_create_session',
+            ) as mock_get_session,
+            patch(
+                'legion.conversations.conversation_manager.update_conversation',
+            ),
+            client.websocket_connect('/api/conversations/ws/stop-idle-123') as websocket,
+        ):
+            mock_session = AsyncMock()
+            mock_session.prompt = mock_prompt_echo
+            mock_get_session.return_value = mock_session
+
+            # Send stop signal without starting generation
+            websocket.send_json({'type': 'stop'})
+
+            # The server should continue operating normally
+            # Send a real message after stop
+            websocket.send_json(
+                {
+                    'message': 'Hello after stop',
+                    'thinking': False,
+                    'model': 'test-model',
+                }
+            )
+
+            # Should receive user confirmation
+            response = websocket.receive_json()
+            assert response['type'] == 'user'
+
+            # Should be able to continue with normal flow
+            response = websocket.receive_json()
+            assert response['type'] in ['chunk', 'complete', 'error']
+
+    @pytest.mark.anyio
+    async def test_runcancelled_exception_handled(self, client: TestClient) -> None:
+        """Test that RunCancelled exception is properly handled."""
+        mock_conv = Conversation(
+            id='runcancel-123',
+            title='RunCancel Test',
+            session_id='legion-conv-runcancel-123',
+            work_dir='/tmp/runcancel-test',
+            created_at='2024-01-01T00:00:00',
+            updated_at='2024-01-01T01:00:00',
+            message_count=0,
+        )
+
+        async def mock_prompt_that_raises(*_args: object, **_kwargs: object):
+            """Simulate generation that raises RunCancelled."""
+            yield TextPart(text='Before cancel')
+            err_msg = 'Test cancellation'
+            raise RunCancelled(err_msg)
+
+        with (
+            patch(
+                'legion.conversations.conversation_manager.get_conversation',
+                return_value=mock_conv,
+            ),
+            patch(
+                'legion.conversations.conversation_manager.get_or_create_session',
+            ) as mock_get_session,
+            patch(
+                'legion.conversations.conversation_manager.update_conversation',
+            ),
+        ):
+            mock_session = AsyncMock()
+            mock_session.prompt = mock_prompt_that_raises
+            mock_get_session.return_value = mock_session
+
+            with client.websocket_connect('/api/conversations/ws/runcancel-123') as websocket:
+                # Send a message
+                websocket.send_json(
+                    {
+                        'message': 'Hello',
+                        'thinking': False,
+                        'model': 'test-model',
+                    }
+                )
+
+                # Receive user confirmation
+                response = websocket.receive_json()
+                assert response['type'] == 'user'
+
+                # Receive the message before cancellation
+                response = websocket.receive_json()
+                assert response['type'] == 'chunk'
+
+                # Should receive complete (not error) when RunCancelled is raised
+                response = websocket.receive_json()
+                assert response['type'] == 'complete'
 
 
 class TestProcessWireMessage:

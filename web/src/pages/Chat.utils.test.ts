@@ -1,13 +1,5 @@
 import { describe, it, expect } from 'vitest'
 
-// Import types from Chat component
-interface ToolCallPart {
-  type: 'tool_call'
-  tool_name: string
-  arguments?: string | Record<string, unknown>
-  isActive?: boolean
-}
-
 // Helper function to format tool call arguments for display
 function formatToolCallArguments(args: string | Record<string, unknown> | undefined | null): string {
   if (args === undefined || args === null) {
@@ -318,9 +310,7 @@ describe('Tool Call Complete Parsing', () => {
 })
 
 // --- formatToolResultOutput (tool result display normalization) ---
-function formatToolResultOutput(
-  value: string | Record<string, unknown> | null | undefined
-): string {
+function formatToolResultOutput(value: unknown): string {
   if (value == null) return ''
   if (typeof value === 'string') return value
   if (typeof value === 'object') return JSON.stringify(value, null, 2)

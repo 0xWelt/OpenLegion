@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, memo } from 'react'
+import { useEffect, useRef, useState, useCallback, memo, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 import ReactMarkdown from 'react-markdown'
@@ -28,11 +28,15 @@ import {
   MessageSquare,
   Plus,
   Copy,
-
-
+  FolderOpen,
+  Terminal,
+  Code,
+  Info,
+  ChevronDown as ChevronDownIcon,
   Sparkles,
   Bot
 } from 'lucide-react'
+import Tooltip from '../components/ui/Tooltip'
 
 // =============================================================================
 // TYPES
@@ -271,20 +275,20 @@ const MarkdownContent = memo(({ content }: { content: string }) => {
 // Attachment preview
 const AttachmentPreview = memo(({ attachment, onRemove }: { attachment: Attachment; onRemove: () => void }) => {
   return (
-    <div className="group relative flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border bg-muted/50 text-xs">
+    <div className="group relative flex items-center gap-2 px-2 py-1.5 rounded-lg border border-oc-border bg-oc-surface text-xs">
       {attachment.type === 'image' ? (
         <div className="relative">
           <img src={attachment.url} alt="" className="w-8 h-8 rounded object-cover" />
         </div>
       ) : (
-        <Paperclip className="w-4 h-4 text-muted-foreground" />
+        <Paperclip className="w-4 h-4 text-oc-text-muted" />
       )}
-      <span className="truncate max-w-[120px] text-muted-foreground">{attachment.filename}</span>
+      <span className="truncate max-w-[120px] text-oc-text-muted">{attachment.filename}</span>
       <button
         onClick={onRemove}
-        className="p-0.5 rounded-full hover:bg-muted transition-colors"
+        className="p-0.5 rounded-full hover:bg-oc-surface-hover transition-colors"
       >
-        <X className="w-3 h-3 text-muted-foreground" />
+        <X className="w-3 h-3 text-oc-text-muted" />
       </button>
     </div>
   )
@@ -344,28 +348,28 @@ const ModelSelectorModal = memo(({
   }, {} as Record<string, Model[]>)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-2xl max-h-[80vh] flex flex-col bg-background rounded-xl border border-border shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="w-full max-w-2xl max-h-[80vh] flex flex-col bg-oc-bg rounded-xl border border-oc-border shadow-2xl overflow-hidden">
         {/* Header with search */}
-        <div className="p-4 border-b border-border">
+        <div className="p-4 border-b border-oc-border">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Select Model</h2>
+            <h2 className="text-lg font-semibold text-oc-text">Select Model</h2>
             <button
               onClick={onClose}
-              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+              className="p-2 text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-lg transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-oc-text-muted" />
             <input
               ref={inputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search models..."
-              className="w-full pl-10 pr-4 py-2 bg-muted rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="w-full pl-10 pr-4 py-2 bg-oc-surface border border-oc-border rounded-lg text-sm text-oc-text focus:outline-none focus:border-oc-text-muted"
             />
           </div>
         </div>
@@ -374,7 +378,7 @@ const ModelSelectorModal = memo(({
         <div className="flex-1 overflow-y-auto p-2">
           {Object.entries(groupedModels).map(([provider, providerModels]) => (
             <div key={provider} className="mb-4">
-              <div className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <div className="px-3 py-2 text-xs font-medium text-oc-text-muted uppercase tracking-wider">
                 {provider}
               </div>
               <div className="space-y-1">
@@ -388,29 +392,29 @@ const ModelSelectorModal = memo(({
                     className={clsx(
                       'w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors',
                       selectedModel === model.id
-                        ? 'bg-primary/10 border border-primary/20'
-                        : 'hover:bg-muted border border-transparent'
+                        ? 'bg-oc-surface-hover border border-oc-border'
+                        : 'hover:bg-oc-surface-hover border border-transparent'
                     )}
                   >
                     <div className="flex-shrink-0">
                       {selectedModel === model.id ? (
-                        <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                          <Check className="w-3 h-3 text-primary-foreground" />
+                        <div className="w-5 h-5 rounded-full bg-oc-text flex items-center justify-center">
+                          <Check className="w-3 h-3 text-oc-bg" />
                         </div>
                       ) : (
-                        <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />
+                        <div className="w-5 h-5 rounded-full border-2 border-oc-border" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{model.name}</span>
+                        <span className="font-medium text-oc-text">{model.name}</span>
                         {model.capabilities?.includes('thinking') && (
-                          <span className="px-1.5 py-0.5 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded">
+                          <span className="px-1.5 py-0.5 text-[10px] bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded">
                             thinking
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-muted-foreground truncate">
+                      <div className="text-xs text-oc-text-muted truncate">
                         {model.description || model.id}
                       </div>
                     </div>
@@ -421,16 +425,16 @@ const ModelSelectorModal = memo(({
           ))}
 
           {filteredModels.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-8 text-oc-text-muted">
               No models found matching "{searchQuery}"
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-3 border-t border-border bg-muted/30">
-          <div className="text-xs text-muted-foreground text-center">
-            Press <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">ESC</kbd> to close
+        <div className="p-3 border-t border-oc-border bg-oc-surface">
+          <div className="text-xs text-oc-text-muted text-center">
+            Press <kbd className="px-1.5 py-0.5 bg-oc-bg border border-oc-border rounded text-xs">ESC</kbd> to close
           </div>
         </div>
       </div>
@@ -443,9 +447,9 @@ const ModelSelectorModal = memo(({
 // =============================================================================
 
 // User message bubble
-const UserMessage = memo(({ content }: { content: string }) => (
-  <div className="flex justify-end">
-    <div className="max-w-[85%] rounded-2xl bg-primary text-primary-foreground px-4 py-3 text-sm">
+const UserMessage = memo(({ content, messageId }: { content: string; messageId: string }) => (
+  <div className="flex justify-end" data-message-id={messageId}>
+    <div className="max-w-[85%] rounded-2xl bg-oc-surface-hover border border-oc-border px-4 py-3 text-sm text-oc-text">
       <div className="whitespace-pre-wrap break-words">{content}</div>
     </div>
   </div>
@@ -458,7 +462,8 @@ const AssistantMessage = memo(({
   isStreaming = false,
   expandedBlocks,
   onToggleBlock,
-  thinkingDuration
+  thinkingDuration,
+  expandAll
 }: {
   messageId: string
   parts?: MessagePart[]
@@ -466,14 +471,15 @@ const AssistantMessage = memo(({
   expandedBlocks: Set<string>
   onToggleBlock: (id: string) => void
   thinkingDuration?: number
+  expandAll?: boolean
 }) => {
   return (
-    <div className="flex justify-start w-full">
+    <div className="flex justify-start w-full" data-message-id={messageId}>
       <div className="w-full space-y-2">
         {/* Render all parts in order */}
         {parts?.map((part, index) => {
           const blockId = `${messageId}-part-${index}`
-          const isExpanded = expandedBlocks.has(blockId)
+          const isExpanded = expandAll || expandedBlocks.has(blockId)
           const isLastPart = index === parts.length - 1
 
           if (part.type === 'thinking') {
@@ -606,7 +612,7 @@ function formatToolCallIdDisplay(id: string): string {
 }
 
 // Normalize tool result output to string (history uses string; live may receive string or object)
-function formatToolResultOutput(value: string | Record<string, unknown> | null | undefined): string {
+function formatToolResultOutput(value: unknown): string {
   if (value == null) return ''
   if (typeof value === 'string') return value
   if (typeof value === 'object') return JSON.stringify(value, null, 2)
@@ -619,19 +625,21 @@ const ToolResultMessage = memo(({
   toolCallId,
   output,
   expandedBlocks,
-  onToggleBlock
+  onToggleBlock,
+  expandAll
 }: {
   messageId: string
   toolCallId?: string
   output: string | Record<string, unknown>
   expandedBlocks: Set<string>
   onToggleBlock: (id: string) => void
+  expandAll?: boolean
 }) => {
   const blockId = `${messageId}-result`
-  const isExpanded = expandedBlocks.has(blockId)
+  const isExpanded = expandAll || expandedBlocks.has(blockId)
   const outputStr = formatToolResultOutput(output)
   return (
-    <div className="flex justify-start w-full">
+    <div className="flex justify-start w-full" data-message-id={messageId}>
       <div className="w-full">
         <button
           onClick={() => onToggleBlock(blockId)}
@@ -654,9 +662,9 @@ const ToolResultMessage = memo(({
 })
 
 // Error message
-const ErrorMessage = memo(({ content }: { content: string }) => (
-  <div className="flex justify-start">
-    <div className="max-w-[85%] px-4 py-3 rounded-lg text-sm bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 text-red-800 dark:text-red-300">
+const ErrorMessage = memo(({ content, messageId }: { content: string; messageId: string }) => (
+  <div className="flex justify-start" data-message-id={messageId}>
+    <div className="max-w-[85%] px-4 py-3 rounded-lg text-sm bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400">
       <div className="flex items-center gap-2 mb-1">
         <AlertCircle className="w-4 h-4" />
         <span className="font-medium">Error</span>
@@ -667,16 +675,575 @@ const ErrorMessage = memo(({ content }: { content: string }) => (
 ))
 
 // Approval message
-const ApprovalMessage = memo(({ content }: { content: string }) => (
-  <div className="flex justify-start">
-    <div className="max-w-[85%] px-3 py-2 rounded-lg border border-purple-200 dark:border-purple-800/40 bg-purple-50/30 dark:bg-purple-950/10">
-      <div className="flex items-center gap-2 text-xs font-medium text-purple-700 dark:text-purple-400">
+const ApprovalMessage = memo(({ content, messageId }: { content: string; messageId: string }) => (
+  <div className="flex justify-start" data-message-id={messageId}>
+    <div className="max-w-[85%] px-3 py-2 rounded-lg border border-purple-500/20 bg-purple-500/10">
+      <div className="flex items-center gap-2 text-xs font-medium text-purple-600 dark:text-purple-400">
         <CheckCircle2 className="w-3.5 h-3.5" />
         <span>{content}</span>
       </div>
     </div>
   </div>
 ))
+
+// Session info popover component - matching kimi-cli style
+const SessionInfoPopover = memo(({
+  contextUsage,
+  workDir,
+  sessionId,
+  sessionDir
+}: {
+  contextUsage: number
+  workDir: string
+  sessionId?: string
+  sessionDir?: string
+}) => {
+  const [copiedField, setCopiedField] = useState<string | null>(null)
+
+  const handleCopy = async (text: string, field: string) => {
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedField(field)
+      setTimeout(() => setCopiedField(null), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  const usagePercent = Math.round(contextUsage * 100)
+  const usedTokens = Math.round(contextUsage * 128000)
+
+  const truncateMiddle = (str: string, maxLen: number): string => {
+    if (str.length <= maxLen) return str
+    const half = Math.floor(maxLen / 2)
+    return str.slice(0, half - 1) + '...' + str.slice(-half + 2)
+  }
+
+  return (
+    <div className="w-80 p-4 space-y-4">
+      {/* Session ID */}
+      {sessionId && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-oc-text-muted">Session ID</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-sm bg-oc-surface px-3 py-2 rounded-md truncate text-oc-text">
+              {truncateMiddle(sessionId, 24)}
+            </code>
+            <button
+              onClick={() => handleCopy(sessionId, 'sessionId')}
+              className="p-2 hover:bg-oc-surface-hover rounded-md transition-colors text-oc-text"
+              title="Copy session ID"
+            >
+              {copiedField === 'sessionId' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Working Directory */}
+      {workDir && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-oc-text-muted">Working Directory</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-sm bg-oc-surface px-3 py-2 rounded-md truncate text-oc-text">
+              {truncateMiddle(workDir, 24)}
+            </code>
+            <button
+              onClick={() => handleCopy(workDir, 'workDir')}
+              className="p-2 hover:bg-oc-surface-hover rounded-md transition-colors text-oc-text"
+              title="Copy working directory"
+            >
+              {copiedField === 'workDir' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Session Directory */}
+      {sessionDir && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-oc-text-muted">Session Directory</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-sm bg-oc-surface px-3 py-2 rounded-md truncate text-oc-text">
+              {truncateMiddle(sessionDir, 24)}
+            </code>
+            <button
+              onClick={() => handleCopy(sessionDir, 'sessionDir')}
+              className="p-2 hover:bg-oc-surface-hover rounded-md transition-colors text-oc-text"
+              title="Copy session directory"
+            >
+              {copiedField === 'sessionDir' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Context Usage */}
+      <div className="space-y-2 pt-2 border-t border-oc-border">
+        <p className="text-sm font-medium text-oc-text-muted">Context Usage</p>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-oc-text-muted">Used</span>
+          <span className="text-oc-text">{usedTokens.toLocaleString()} / 128,000 tokens</span>
+        </div>
+        <div className="w-full h-2 bg-oc-surface rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${
+              usagePercent > 90 ? 'bg-red-500' : usagePercent > 70 ? 'bg-yellow-500' : 'bg-green-500'
+            }`}
+            style={{ width: `${usagePercent}%` }}
+          />
+        </div>
+        <p className="text-xs text-oc-text-muted">
+          {usagePercent}% of context window used
+        </p>
+      </div>
+    </div>
+  )
+})
+
+// Open menu component
+const OpenInMenu = memo(({ workDir }: { workDir: string }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen])
+
+  const handleOpen = async (app: string) => {
+    if (!workDir) return
+    try {
+      const res = await fetch('/api/open-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app, path: workDir })
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.detail || 'Failed to open')
+      }
+    } catch (err) {
+      console.error('Failed to open:', err)
+    }
+    setIsOpen(false)
+  }
+
+  const handleCopyPath = async () => {
+    if (!workDir) return
+    try {
+      await navigator.clipboard.writeText(workDir)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+    setIsOpen(false)
+  }
+
+  const compactPath = (path: string, maxLen = 25): string => {
+    if (path.length <= maxLen) return path
+    const parts = path.split('/').filter(Boolean)
+    if (parts.length === 0) return path.slice(0, maxLen - 1) + '…'
+    const tail = parts.slice(-2).join('/')
+    if (tail.length + 2 <= maxLen) return `…/${tail}`
+    return `…/${tail.slice(-maxLen + 2)}`
+  }
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <div className="flex items-center h-8 rounded-md bg-oc-surface border border-oc-border">
+        <div className="flex items-center gap-1.5 px-2 h-full text-oc-text">
+          <Terminal className="w-3.5 h-3.5" />
+          <span className="text-xs font-medium truncate max-w-[120px]">
+            {compactPath(workDir)}
+          </span>
+        </div>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center gap-0.5 px-2 h-full border-l border-oc-border hover:bg-oc-surface-hover transition-colors text-xs text-oc-text"
+        >
+          Open
+          <ChevronDownIcon className="w-3 h-3" />
+        </button>
+      </div>
+
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-1 w-48 bg-oc-bg border border-oc-border rounded-md shadow-lg py-1 z-50">
+          <button
+            onClick={() => handleOpen('vscode')}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-oc-surface-hover transition-colors text-oc-text"
+          >
+            <Code className="w-4 h-4" />
+            VS Code
+          </button>
+          <button
+            onClick={() => handleOpen('cursor')}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-oc-surface-hover transition-colors text-oc-text"
+          >
+            <Code className="w-4 h-4" />
+            Cursor
+          </button>
+          <button
+            onClick={() => handleOpen('finder')}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-oc-surface-hover transition-colors text-oc-text"
+          >
+            <FolderOpen className="w-4 h-4" />
+            Finder
+          </button>
+          <button
+            onClick={() => handleOpen('terminal')}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-oc-surface-hover transition-colors text-oc-text"
+          >
+            <Terminal className="w-4 h-4" />
+            Terminal
+          </button>
+          <div className="border-t border-oc-border my-1" />
+          <button
+            onClick={handleCopyPath}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-oc-surface-hover transition-colors text-oc-text"
+          >
+            <Copy className="w-4 h-4" />
+            Copy path
+          </button>
+        </div>
+      )}
+    </div>
+  )
+})
+
+// Chat header component
+interface ChatHeaderProps {
+  convId: string | null
+  workDir: string
+  contextUsage: number
+  expandAll: boolean
+  onToggleExpandAll: () => void
+  onOpenSearch: () => void
+  sessionId?: string
+  sessionDir?: string
+}
+
+const ChatHeader = memo(({
+  convId,
+  workDir,
+  contextUsage,
+  expandAll,
+  onToggleExpandAll,
+  onOpenSearch,
+  sessionId,
+  sessionDir
+}: ChatHeaderProps) => {
+  const [showContextPopover, setShowContextPopover] = useState(false)
+  const [popoverPosition, setPopoverPosition] = useState<'bottom' | 'top'>('bottom')
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const popoverContentRef = useRef<HTMLDivElement>(null)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Handle hover for context popover with auto-adjustment
+  const handleMouseEnter = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+    }
+
+    // Check if popover would overflow and adjust position
+    if (popoverRef.current && popoverContentRef.current) {
+      const triggerRect = popoverRef.current.getBoundingClientRect()
+      const popoverHeight = 350 // approximate height
+      const viewportHeight = window.innerHeight
+
+      // Check if there's enough space below
+      const spaceBelow = viewportHeight - triggerRect.bottom
+      if (spaceBelow < popoverHeight && triggerRect.top > popoverHeight) {
+        setPopoverPosition('top')
+      } else {
+        setPopoverPosition('bottom')
+      }
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      setShowContextPopover(true)
+    }, 200)
+  }
+
+  const handleMouseLeave = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+    }
+    timeoutRef.current = setTimeout(() => {
+      setShowContextPopover(false)
+    }, 150)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [])
+
+  const usagePercent = Math.round(contextUsage * 100)
+
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-oc-border shrink-0 bg-oc-bg">
+      <div className="flex items-center gap-2 min-w-0">
+        {convId ? (
+          <>
+            <Bot className="w-4 h-4 text-oc-primary shrink-0" />
+            <span className="text-sm font-medium truncate text-oc-text">Chat</span>
+          </>
+        ) : (
+          <span className="text-sm text-oc-text-muted">No Active Session</span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        {convId && (
+          <>
+            {/* Working Directory + Open Menu */}
+            {workDir && (
+              <div className="hidden sm:block">
+                <OpenInMenu workDir={workDir} />
+              </div>
+            )}
+
+            {/* Context Usage with Hover Popover */}
+            <div
+              className="relative"
+              ref={popoverRef}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+            >
+              <button
+                className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-md transition-colors cursor-default"
+              >
+                <span>{usagePercent}% context</span>
+                <Info className="w-3 h-3" />
+              </button>
+
+              {showContextPopover && (
+                <div
+                  ref={popoverContentRef}
+                  className={`absolute right-0 ${popoverPosition === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'} bg-oc-bg border border-oc-border rounded-lg shadow-lg z-50`}
+                >
+                  <SessionInfoPopover
+                    contextUsage={contextUsage}
+                    workDir={workDir}
+                    sessionId={sessionId}
+                    sessionDir={sessionDir}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Search Button with Tooltip */}
+            <Tooltip
+              content={
+                <div className="flex items-center gap-2">
+                  <span>Search messages</span>
+                  <kbd className="px-1.5 py-0.5 bg-oc-surface rounded text-xs font-sans">Cmd</kbd>
+                  <span className="text-xs">+</span>
+                  <kbd className="px-1.5 py-0.5 bg-oc-surface rounded text-xs font-sans">F</kbd>
+                </div>
+              }
+              placement="bottom"
+            >
+              <button
+                onClick={onOpenSearch}
+                className="p-2 text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-md transition-colors"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+            </Tooltip>
+
+            {/* Expand/Collapse All Button with Tooltip */}
+            <Tooltip
+              content={expandAll ? 'Collapse all' : 'Expand all'}
+              placement="bottom"
+            >
+              <button
+                onClick={onToggleExpandAll}
+                className="p-2 text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-md transition-colors"
+              >
+                {expandAll ? <ChevronsDownUp className="w-4 h-4" /> : <ChevronsUpDown className="w-4 h-4" />}
+              </button>
+            </Tooltip>
+          </>
+        )}
+      </div>
+    </div>
+  )
+})
+
+// Search modal component - matching kimi-cli style
+interface SearchModalProps {
+  isOpen: boolean
+  onClose: () => void
+  messages: Message[]
+  onJumpToMessage: (messageId: string) => void
+}
+
+const SearchModal = memo(({
+  isOpen,
+  onClose,
+  messages,
+  onJumpToMessage
+}: SearchModalProps) => {
+  const [query, setQuery] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const resultsRef = useRef<HTMLDivElement>(null)
+
+  // Compute results first (before any effects that use it)
+  const results = useMemo(() => {
+    if (!query.trim()) return []
+    const q = query.toLowerCase()
+    return messages
+      .filter(m => m.content?.toLowerCase().includes(q))
+      .map(m => ({
+        messageId: m.id,
+        content: m.content.slice(0, 200) + (m.content.length > 200 ? '...' : '')
+      }))
+  }, [query, messages])
+
+  useEffect(() => {
+    if (isOpen) {
+      setQuery('')
+      setSelectedIndex(0)
+      setTimeout(() => inputRef.current?.focus(), 100)
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedIndex(prev => Math.min(prev + 1, results.length - 1))
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIndex(prev => Math.max(prev - 1, 0))
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const result = results[selectedIndex]
+        if (result) {
+          onJumpToMessage(result.messageId)
+          onClose()
+        }
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, onClose, results, selectedIndex])
+
+  // Scroll selected into view
+  useEffect(() => {
+    if (resultsRef.current) {
+      const selectedEl = resultsRef.current.children[selectedIndex] as HTMLElement
+      if (selectedEl) {
+        selectedEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      }
+    }
+  }, [selectedIndex])
+
+  // Reset selection when query changes
+  useEffect(() => {
+    setSelectedIndex(0)
+  }, [query])
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/50">
+      <div className="w-full max-w-2xl bg-oc-bg border border-oc-border rounded-xl shadow-2xl overflow-hidden">
+        {/* Search Input */}
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-oc-border">
+          <Search className="w-5 h-5 text-oc-text-muted flex-shrink-0" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search in conversation..."
+            className="flex-1 bg-transparent border-none outline-none text-base text-oc-text placeholder:text-oc-text-muted"
+          />
+          <button
+            onClick={onClose}
+            className="p-1.5 text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-lg transition-colors flex-shrink-0"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Results Area */}
+        <div
+          ref={resultsRef}
+          className="max-h-[50vh] overflow-y-auto min-h-[100px]"
+        >
+          {results.length === 0 && query && (
+            <div className="flex items-center justify-center h-[100px] text-oc-text-muted">
+              <span className="text-sm">No results found</span>
+            </div>
+          )}
+          {results.length === 0 && !query && (
+            <div className="flex items-center justify-center h-[100px] text-oc-text-muted">
+              <span className="text-sm">Type to search</span>
+            </div>
+          )}
+          {results.map((result, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                onJumpToMessage(result.messageId)
+                onClose()
+              }}
+              className={`w-full text-left px-4 py-3 border-b border-oc-border last:border-0 transition-colors ${
+                idx === selectedIndex
+                  ? 'bg-oc-surface-hover text-oc-text'
+                  : 'hover:bg-oc-surface-hover/50 text-oc-text'
+              }`}
+            >
+              <p className="text-sm line-clamp-2">{result.content}</p>
+            </button>
+          ))}
+        </div>
+
+        {/* Footer with keyboard hints */}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-oc-surface border-t border-oc-border text-xs text-oc-text-muted">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 bg-oc-bg border border-oc-border rounded text-[10px]">↑</kbd>
+              <kbd className="px-1.5 py-0.5 bg-oc-bg border border-oc-border rounded text-[10px]">↓</kbd>
+              <span>Navigate</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 bg-oc-bg border border-oc-border rounded text-[10px]">Enter</kbd>
+              <span>Jump to message</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 bg-oc-bg border border-oc-border rounded text-[10px]">Esc</kbd>
+            <span>Close</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
 
 
 
@@ -694,6 +1261,7 @@ export default function Chat() {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [isConnected, setIsConnected] = useState(false)
+  const [reconnectTrigger, setReconnectTrigger] = useState(0)
   const [statusInfo, setStatusInfo] = useState<{ context_usage: number | null; token_usage: number | null }>({
     context_usage: null,
     token_usage: null
@@ -706,6 +1274,9 @@ export default function Chat() {
   const [thinkingDuration] = useState<number>(0)
   const [models, setModels] = useState<Model[]>([])
   const [configLoaded, setConfigLoaded] = useState(false)
+  const [workDir, setWorkDir] = useState<string>('')
+  const [sessionDir, setSessionDir] = useState<string>('')
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
   // Track the currently streaming assistant message
   const streamingMsgIdRef = useRef<string | null>(null)
 
@@ -720,13 +1291,15 @@ export default function Chat() {
 
   const SCROLL_STORAGE_KEY = (id: string) => `chat-scroll-${id}`
 
-  // Persist scroll position so hot reload doesn't jump to top
+  // Persist scroll position (relative to bottom) so hot reload doesn't jump to top
   const saveScrollPosition = useCallback(() => {
     const container = messagesContainerRef.current
     const id = searchParams.get('id')
     if (!container || !id) return
     const key = SCROLL_STORAGE_KEY(id)
-    sessionStorage.setItem(key, String(container.scrollTop))
+    // Save distance from bottom instead of scrollTop
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    sessionStorage.setItem(key, String(distanceFromBottom))
   }, [searchParams])
 
   useEffect(() => {
@@ -748,7 +1321,7 @@ export default function Chat() {
     scrollRestoredForConvRef.current.clear()
   }, [convId])
 
-  // Restore scroll position after mount (e.g. after HMR) so we don't jump to top
+  // Restore scroll position after mount (e.g. after HMR) - maintains distance from bottom
   useEffect(() => {
     if (!convId || messages.length === 0) return
     if (scrollRestoredForConvRef.current.has(convId)) return
@@ -757,11 +1330,13 @@ export default function Chat() {
     scrollRestoredForConvRef.current.add(convId)
     const container = messagesContainerRef.current
     if (!container) return
-    const value = parseInt(saved, 10)
-    if (Number.isNaN(value)) return
+    const distanceFromBottom = parseInt(saved, 10)
+    if (Number.isNaN(distanceFromBottom)) return
     const restore = () => {
       if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = value
+        // Restore distance from bottom
+        const container = messagesContainerRef.current
+        container.scrollTop = container.scrollHeight - container.clientHeight - distanceFromBottom
       }
     }
     requestAnimationFrame(restore)
@@ -780,6 +1355,22 @@ export default function Chat() {
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
+
+  // Maintain bottom position when expandAll changes (messages may change height)
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+    // Save distance from bottom before height change
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    // Use requestAnimationFrame to wait for DOM update
+    requestAnimationFrame(() => {
+      if (messagesContainerRef.current) {
+        const newContainer = messagesContainerRef.current
+        // Restore distance from bottom
+        newContainer.scrollTop = newContainer.scrollHeight - newContainer.clientHeight - distanceFromBottom
+      }
+    })
+  }, [expandAll])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -829,12 +1420,31 @@ export default function Chat() {
     loadConfig()
   }, [])
 
+  // Fetch conversation metadata (including work_dir)
+  const fetchConversationMeta = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/conversations/${id}`)
+      const data = await res.json()
+      if (data.work_dir) {
+        setWorkDir(data.work_dir)
+      }
+      if (data.session_dir) {
+        setSessionDir(data.session_dir)
+      }
+    } catch (err) {
+      console.error('Failed to fetch conversation meta:', err)
+    }
+  }, [])
+
   // Load conversation
   const loadConversation = useCallback(async (id: string) => {
     streamingMsgIdRef.current = null
     setMessages([])
     setStatusInfo({ context_usage: null, token_usage: null })
     setAttachments([])
+
+    // Fetch work_dir along with history
+    await fetchConversationMeta(id)
 
     try {
       const res = await fetch(`/api/conversations/${id}/history`)
@@ -923,7 +1533,7 @@ export default function Chat() {
     }
   }, [convId, loadConversation])
 
-  // WebSocket connection
+  // WebSocket connection with auto-reconnect
   useEffect(() => {
     if (!convId) {
       wsRef.current?.close()
@@ -932,10 +1542,57 @@ export default function Chat() {
       return
     }
 
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/conversations/ws/${convId}`
-    const ws = new WebSocket(wsUrl)
+    let reconnectTimeout: NodeJS.Timeout | null = null
+    let reconnectAttempts = 0
+    const maxReconnectAttempts = 5
+    const reconnectDelay = 1000 // Start with 1 second
 
-    ws.onopen = () => setIsConnected(true)
+    const connectWebSocket = () => {
+      const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/conversations/ws/${convId}`
+      const ws = new WebSocket(wsUrl)
+
+      ws.onopen = () => {
+        setIsConnected(true)
+        reconnectAttempts = 0 // Reset on successful connection
+      }
+
+      ws.onclose = (event) => {
+        setIsConnected(false)
+        if (!event.wasClean && event.code !== 1000) {
+          console.error(`WebSocket closed unexpectedly: ${event.code} ${event.reason}`)
+        }
+
+        // Attempt to reconnect if not at max attempts
+        if (reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++
+          const delay = Math.min(reconnectDelay * reconnectAttempts, 10000) // Max 10 seconds
+          console.log(`WebSocket reconnecting in ${delay}ms... (attempt ${reconnectAttempts})`)
+          reconnectTimeout = setTimeout(connectWebSocket, delay)
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error)
+      }
+
+      wsRef.current = ws
+    }
+
+    connectWebSocket()
+
+    return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+      }
+      wsRef.current?.close()
+      wsRef.current = null
+    }
+  }, [convId, reconnectTrigger])
+
+  // WebSocket message handling
+  useEffect(() => {
+    const ws = wsRef.current
+    if (!ws) return
 
     // Helper to update or create streaming message
     const updateStreamingMessage = (
@@ -967,7 +1624,7 @@ export default function Chat() {
       })
     }
 
-    ws.onmessage = (event) => {
+    const handleMessage = (event: MessageEvent) => {
       const data = JSON.parse(event.data)
 
       switch (data.type) {
@@ -1175,22 +1832,27 @@ export default function Chat() {
       }
     }
 
-    ws.onclose = (event) => {
-      setIsConnected(false)
-      // Fail fast on abnormal closure after logging
-      if (!event.wasClean && event.code !== 1000) {
-        console.error(`WebSocket closed unexpectedly: ${event.code} ${event.reason}`)
+    ws.addEventListener('message', handleMessage)
+
+    return () => {
+      ws.removeEventListener('message', handleMessage)
+    }
+  }, [])
+
+  // Handle page visibility change for reconnection
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && convId) {
+        const ws = wsRef.current
+        // Check if connection is closed or closing
+        if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+          // Trigger reconnection by incrementing the trigger counter
+          setReconnectTrigger(prev => prev + 1)
+        }
       }
     }
-
-    ws.onerror = (error) => {
-      // Log error details for debugging
-      console.error('WebSocket error:', error)
-    }
-
-    wsRef.current = ws
-
-    return () => ws.close(1000, 'Component unmounting')
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [convId])
 
   // File upload
@@ -1211,6 +1873,15 @@ export default function Chat() {
       console.error('Failed to upload file:', err)
       return null
     }
+  }
+
+  // Stop generation
+  const handleStopGeneration = () => {
+    if (wsRef.current && isConnected) {
+      wsRef.current.send(JSON.stringify({ type: 'stop' }))
+    }
+    setIsLoading(false)
+    streamingMsgIdRef.current = null
   }
 
   // Send message
@@ -1261,6 +1932,20 @@ export default function Chat() {
     setAttachments([])
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
+
+  // Global keyboard shortcut for search
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault()
+        if (convId) {
+          setIsSearchOpen(true)
+        }
+      }
+    }
+    document.addEventListener('keydown', handleGlobalKeyDown)
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [convId])
 
   // Keyboard handling
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1319,13 +2004,6 @@ export default function Chat() {
     }
   }
 
-  // Formatting
-  const formatContextUsage = () => {
-    const usage = statusInfo.context_usage
-    if (usage === null) return '--'
-    return `${Math.round(usage * 100)}%`
-  }
-
   // Toggle block expansion
   const toggleBlock = (id: string) => {
     setExpandedBlocks((prev) => {
@@ -1343,7 +2021,7 @@ export default function Chat() {
     return messages.map((msg) => {
       switch (msg.role) {
         case 'user':
-          return <UserMessage key={msg.id} content={msg.content} />
+          return <UserMessage key={msg.id} content={msg.content} messageId={msg.id} />
         case 'assistant':
           return (
             <AssistantMessage
@@ -1354,12 +2032,13 @@ export default function Chat() {
               expandedBlocks={expandedBlocks}
               onToggleBlock={toggleBlock}
               thinkingDuration={thinkingDuration}
+              expandAll={expandAll}
             />
           )
         case 'error':
-          return <ErrorMessage key={msg.id} content={msg.content} />
+          return <ErrorMessage key={msg.id} content={msg.content} messageId={msg.id} />
         case 'approval':
-          return <ApprovalMessage key={msg.id} content={msg.content} />
+          return <ApprovalMessage key={msg.id} content={msg.content} messageId={msg.id} />
         case 'tool_result':
           return (
             <ToolResultMessage
@@ -1369,6 +2048,7 @@ export default function Chat() {
               output={msg.output ?? ''}
               expandedBlocks={expandedBlocks}
               onToggleBlock={toggleBlock}
+              expandAll={expandAll}
             />
           )
         default:
@@ -1380,58 +2060,36 @@ export default function Chat() {
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          {convId ? (
-            <>
-              <Bot className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium truncate">Chat</span>
-            </>
-          ) : (
-            <span className="text-sm text-muted-foreground">No Active Session</span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1">
-          {convId && (
-            <>
-              <button className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors">
-                <span>{formatContextUsage()} context</span>
-              </button>
-
-              <div className="w-px h-4 bg-border mx-1" />
-
-              <button
-                onClick={() => setExpandAll(!expandAll)}
-                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-                title={expandAll ? 'Collapse all' : 'Expand all'}
-              >
-                {expandAll ? <ChevronsDownUp className="w-4 h-4" /> : <ChevronsUpDown className="w-4 h-4" />}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      <ChatHeader
+        convId={convId}
+        workDir={workDir}
+        contextUsage={statusInfo.context_usage ?? 0}
+        expandAll={expandAll}
+        onToggleExpandAll={() => setExpandAll(!expandAll)}
+        onOpenSearch={() => setIsSearchOpen(true)}
+        sessionId={convId || undefined}
+        sessionDir={sessionDir || undefined}
+      />
 
       {/* Messages */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto">
         {!convId ? (
           <div className="h-full flex flex-col items-center justify-center p-8">
-            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
-              <MessageSquare className="w-8 h-8 text-primary" />
+            <div className="w-16 h-16 bg-oc-surface rounded-2xl border border-oc-border flex items-center justify-center mb-6">
+              <MessageSquare className="w-8 h-8 text-oc-text-muted" />
             </div>
-            <h1 className="text-2xl font-semibold mb-2">Welcome to Legion Chat</h1>
-            <p className="text-muted-foreground text-sm mb-8">Start a new conversation or select an existing one</p>
+            <h1 className="text-2xl font-semibold mb-2 text-oc-text">Welcome to Legion Chat</h1>
+            <p className="text-oc-text-muted text-sm mb-8">Start a new conversation or select an existing one</p>
             <button
               onClick={createConversation}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-oc-surface hover:bg-oc-surface-hover border border-oc-border text-oc-text rounded-lg transition-colors text-sm font-medium"
             >
               <Plus className="w-4 h-4" />
               <span>New Chat</span>
             </button>
           </div>
         ) : messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+          <div className="h-full flex flex-col items-center justify-center text-oc-text-muted">
             <Sparkles className="w-8 h-8 mb-4 opacity-50" />
             <p className="text-sm">How can I help you today?</p>
           </div>
@@ -1444,7 +2102,7 @@ export default function Chat() {
       </div>
 
       {/* Input Area */}
-      <div className="px-4 sm:px-6 lg:px-8 py-4 shrink-0 bg-background">
+      <div className="pt-3 pb-6 px-6 shrink-0 bg-oc-bg">
         <div className="max-w-none">
           {/* Attachments */}
           {attachments.length > 0 && (
@@ -1460,7 +2118,7 @@ export default function Chat() {
           )}
 
           {/* Input container */}
-          <div className="relative rounded-xl border border-border bg-muted/30 focus-within:bg-background focus-within:border-primary transition-colors">
+          <div className="relative rounded-xl border border-oc-border bg-oc-surface focus-within:border-oc-text-muted transition-colors">
             <textarea
               ref={textareaRef}
               value={input}
@@ -1487,19 +2145,19 @@ export default function Chat() {
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={!convId || isLoading}
-                  className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
+                  className="p-2 text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-lg transition-colors disabled:opacity-50"
                   title="Attach files"
                 >
                   <Paperclip className="w-4 h-4" />
                 </button>
 
-                <div className="w-px h-4 bg-border mx-1" />
+                <div className="w-px h-4 bg-oc-border mx-1" />
 
                 {/* Model selector button */}
                 <button
                   onClick={() => setShowModelSelector(true)}
                   disabled={!convId || isLoading || !configLoaded}
-                  className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 px-2 py-1.5 text-xs text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover rounded-lg transition-colors disabled:opacity-50"
                 >
                   <Cpu className="w-3.5 h-3.5" />
                   <span className="max-w-[120px] truncate">{selectedModelData?.name || selectedModel || 'Select model'}</span>
@@ -1512,8 +2170,8 @@ export default function Chat() {
                   className={clsx(
                     'flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-lg transition-colors disabled:opacity-50',
                     thinkingEnabled
-                      ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                      ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20'
+                      : 'text-oc-text-muted hover:text-oc-text hover:bg-oc-surface-hover'
                   )}
                 >
                   <Brain className="w-3.5 h-3.5" />
@@ -1523,14 +2181,11 @@ export default function Chat() {
 
               {/* Right side */}
               <div className="flex items-center gap-2">
-                <span className="hidden sm:inline text-xs text-muted-foreground">
-                  {formatContextUsage()} context
-                </span>
-
                 {isLoading ? (
                   <button
-                    onClick={() => {}}
-                    className="p-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                    onClick={handleStopGeneration}
+                    className="p-2 bg-oc-surface-hover hover:bg-oc-border border border-oc-border text-oc-text rounded-lg transition-colors"
+                    title="Stop generation"
                   >
                     <Square className="w-4 h-4 fill-current" />
                   </button>
@@ -1538,7 +2193,7 @@ export default function Chat() {
                   <button
                     onClick={handleSend}
                     disabled={!convId || (!input.trim() && attachments.length === 0)}
-                    className="p-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    className="p-2 bg-oc-surface-hover hover:bg-oc-border border border-oc-border text-oc-text rounded-lg transition-colors disabled:opacity-50"
                   >
                     <CornerDownLeft className="w-4 h-4" />
                   </button>
@@ -1556,6 +2211,23 @@ export default function Chat() {
         models={models}
         selectedModel={selectedModel}
         onSelect={setSelectedModel}
+      />
+
+      {/* Search Modal */}
+      <SearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        messages={messages}
+        onJumpToMessage={(messageId) => {
+          // Find the message element and scroll to it
+          const element = document.querySelector(`[data-message-id="${messageId}"]`)
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            // Add a highlight effect
+            element.classList.add('bg-primary/10')
+            setTimeout(() => element.classList.remove('bg-primary/10'), 2000)
+          }
+        }}
       />
     </div>
   )
